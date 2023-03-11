@@ -87,27 +87,8 @@ func getPodsAndNodes(clientset kubernetes.Interface, podLabels, nodeLabels, name
 
 	newPodItems := []corev1.Pod{}
 
-	fmt.Printf("DEBUG Node List:\n")
-	fmt.Printf("============\n")
-
 	nodes := map[string]bool{}
 	for i, node := range nodeList.Items {
-		fmt.Printf("%d  - Node: %v\n", i, node.GetName())
-		fmt.Printf("     Labels:\n")
-		for k, v := range node.GetLabels() {
-			fmt.Printf("             %v  -  %v\n", k, v)
-		}
-		fmt.Printf("Annotations:\n")
-		for k, v := range node.GetAnnotations() {
-			fmt.Printf("             %v  -  %v\n", k, v)
-		}
-		fmt.Printf("     Fields: \n")
-		for k, v := range node.GetManagedFields() {
-			fmt.Printf("             %v  -  %v\n", k, v)
-		}
-		//fmt.Printf(" ResVersion: %v\n", node.GetResourceVersion())
-		//fmt.Printf("  Namespace: %v\n", node.GetNamespace())
-		fmt.Printf("============\n")
 		nodes[node.GetName()] = true
 	}
 
