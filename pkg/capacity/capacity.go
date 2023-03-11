@@ -88,7 +88,7 @@ func getPodsAndNodes(clientset kubernetes.Interface, podLabels, nodeLabels, name
 	newPodItems := []corev1.Pod{}
 
 	nodes := map[string]bool{}
-	for i, node := range nodeList.Items {
+	for _, node := range nodeList.Items {
 		nodes[node.GetName()] = true
 	}
 
