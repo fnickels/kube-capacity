@@ -22,15 +22,18 @@ import (
 )
 
 type tablePrinter struct {
-	cm              *clusterMetric
-	showPods        bool
-	showUtil        bool
-	showPodCount    bool
-	showContainers  bool
-	showNamespace   bool
-	sortBy          string
-	w               *tabwriter.Writer
-	availableFormat bool
+	cm                *clusterMetric
+	showPods          bool
+	showUtil          bool
+	showPodCount      bool
+	showContainers    bool
+	showNamespace     bool
+	showAllNodeLabels bool
+	displayNodeLabel  string
+	sortBy            string
+	w                 *tabwriter.Writer
+	availableFormat   bool
+	uniqueNodeLabels  []string
 }
 
 type tableLine struct {
@@ -38,6 +41,7 @@ type tableLine struct {
 	namespace      string
 	pod            string
 	container      string
+	label          string
 	cpuRequests    string
 	cpuLimits      string
 	cpuUtil        string
@@ -45,6 +49,7 @@ type tableLine struct {
 	memoryLimits   string
 	memoryUtil     string
 	podCount       string
+	allLabels      []string
 }
 
 var headerStrings = tableLine{
@@ -52,6 +57,7 @@ var headerStrings = tableLine{
 	namespace:      "NAMESPACE",
 	pod:            "POD",
 	container:      "CONTAINER",
+	label:          "LABEL",
 	cpuRequests:    "CPU REQUESTS",
 	cpuLimits:      "CPU LIMITS",
 	cpuUtil:        "CPU UTIL",
@@ -59,11 +65,21 @@ var headerStrings = tableLine{
 	memoryLimits:   "MEMORY LIMITS",
 	memoryUtil:     "MEMORY UTIL",
 	podCount:       "POD COUNT",
+	allLabels:      []string{"labels"},
 }
 
 func (tp *tablePrinter) Print() {
 	tp.w.Init(os.Stdout, 0, 8, 2, ' ', 0)
 	sortedNodeMetrics := tp.cm.getSortedNodeMetrics(tp.sortBy)
+
+	if tp.displayNodeLabel != "" {
+		headerStrings.label = tp.displayNodeLabel
+	}
+
+	if tp.showAllNodeLabels {
+		tp.uniqueNodeLabels = tp.cm.getUniqueNodeLabels()
+		headerStrings.allLabels = tp.uniqueNodeLabels
+	}
 
 	tp.printLine(&headerStrings)
 
@@ -81,11 +97,11 @@ func (tp *tablePrinter) Print() {
 		if tp.showPods || tp.showContainers {
 			podMetrics := nm.getSortedPodMetrics(tp.sortBy)
 			for _, pm := range podMetrics {
-				tp.printPodLine(nm.name, pm)
+				tp.printPodLine(nm.name, nm, pm)
 				if tp.showContainers {
 					containerMetrics := pm.getSortedContainerMetrics(tp.sortBy)
 					for _, containerMetric := range containerMetrics {
-						tp.printContainerLine(nm.name, pm, containerMetric)
+						tp.printContainerLine(nm.name, nm, pm, containerMetric)
 					}
 				}
 			}
@@ -104,7 +120,12 @@ func (tp *tablePrinter) printLine(tl *tableLine) {
 }
 
 func (tp *tablePrinter) getLineItems(tl *tableLine) []string {
+
 	lineItems := []string{tl.node}
+
+	if tp.displayNodeLabel != "" {
+		lineItems = append(lineItems, tl.label)
+	}
 
 	if tp.showContainers || tp.showPods {
 		if tp.showNamespace {
@@ -135,15 +156,28 @@ func (tp *tablePrinter) getLineItems(tl *tableLine) []string {
 		lineItems = append(lineItems, tl.podCount)
 	}
 
+	if tp.showAllNodeLabels {
+		for _, x := range tl.allLabels {
+			lineItems = append(lineItems, x)
+		}
+	}
+
 	return lineItems
 }
 
 func (tp *tablePrinter) printClusterLine() {
+
+	allLabels := []string{}
+	for i := 1; i < len(tp.uniqueNodeLabels); i++ {
+		allLabels = append(allLabels, "*")
+	}
+
 	tp.printLine(&tableLine{
 		node:           "*",
 		namespace:      "*",
 		pod:            "*",
 		container:      "*",
+		label:          "*",
 		cpuRequests:    tp.cm.cpu.requestString(tp.availableFormat),
 		cpuLimits:      tp.cm.cpu.limitString(tp.availableFormat),
 		cpuUtil:        tp.cm.cpu.utilString(tp.availableFormat),
@@ -151,15 +185,21 @@ func (tp *tablePrinter) printClusterLine() {
 		memoryLimits:   tp.cm.memory.limitString(tp.availableFormat),
 		memoryUtil:     tp.cm.memory.utilString(tp.availableFormat),
 		podCount:       tp.cm.podCount.podCountString(),
+		allLabels:      allLabels,
 	})
 }
 
 func (tp *tablePrinter) printNodeLine(nodeName string, nm *nodeMetric) {
+	allLabels := []string{}
+	for _, label := range tp.uniqueNodeLabels {
+		allLabels = append(allLabels, nm.nodeLabels[label])
+	}
 	tp.printLine(&tableLine{
 		node:           nodeName,
 		namespace:      "*",
 		pod:            "*",
 		container:      "*",
+		label:          nm.nodeLabels[tp.displayNodeLabel],
 		cpuRequests:    nm.cpu.requestString(tp.availableFormat),
 		cpuLimits:      nm.cpu.limitString(tp.availableFormat),
 		cpuUtil:        nm.cpu.utilString(tp.availableFormat),
@@ -167,35 +207,48 @@ func (tp *tablePrinter) printNodeLine(nodeName string, nm *nodeMetric) {
 		memoryLimits:   nm.memory.limitString(tp.availableFormat),
 		memoryUtil:     nm.memory.utilString(tp.availableFormat),
 		podCount:       nm.podCount.podCountString(),
+		allLabels:      allLabels,
 	})
 }
 
-func (tp *tablePrinter) printPodLine(nodeName string, pm *podMetric) {
+func (tp *tablePrinter) printPodLine(nodeName string, nm *nodeMetric, pm *podMetric) {
+	allLabels := []string{}
+	for _, label := range tp.uniqueNodeLabels {
+		allLabels = append(allLabels, nm.nodeLabels[label])
+	}
 	tp.printLine(&tableLine{
 		node:           nodeName,
 		namespace:      pm.namespace,
 		pod:            pm.name,
 		container:      "*",
+		label:          nm.nodeLabels[tp.displayNodeLabel],
 		cpuRequests:    pm.cpu.requestString(tp.availableFormat),
 		cpuLimits:      pm.cpu.limitString(tp.availableFormat),
 		cpuUtil:        pm.cpu.utilString(tp.availableFormat),
 		memoryRequests: pm.memory.requestString(tp.availableFormat),
 		memoryLimits:   pm.memory.limitString(tp.availableFormat),
 		memoryUtil:     pm.memory.utilString(tp.availableFormat),
+		allLabels:      allLabels,
 	})
 }
 
-func (tp *tablePrinter) printContainerLine(nodeName string, pm *podMetric, cm *containerMetric) {
+func (tp *tablePrinter) printContainerLine(nodeName string, nm *nodeMetric, pm *podMetric, cm *containerMetric) {
+	allLabels := []string{}
+	for _, label := range tp.uniqueNodeLabels {
+		allLabels = append(allLabels, nm.nodeLabels[label])
+	}
 	tp.printLine(&tableLine{
 		node:           nodeName,
 		namespace:      pm.namespace,
 		pod:            pm.name,
 		container:      cm.name,
+		label:          nm.nodeLabels[tp.displayNodeLabel],
 		cpuRequests:    cm.cpu.requestString(tp.availableFormat),
 		cpuLimits:      cm.cpu.limitString(tp.availableFormat),
 		cpuUtil:        cm.cpu.utilString(tp.availableFormat),
 		memoryRequests: cm.memory.requestString(tp.availableFormat),
 		memoryLimits:   cm.memory.limitString(tp.availableFormat),
 		memoryUtil:     cm.memory.utilString(tp.availableFormat),
+		allLabels:      allLabels,
 	})
 }
