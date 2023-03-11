@@ -23,6 +23,8 @@ import (
 )
 
 var showContainers bool
+var showSecurityPerimeters bool
+var showNodeGroups bool
 var showPods bool
 var showUtil bool
 var showPodCount bool
@@ -50,7 +52,10 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		capacity.FetchAndPrint(showContainers, showPods, showUtil, showPodCount, availableFormat, podLabels, nodeLabels,
+		capacity.FetchAndPrint(showContainers, showPods, showUtil, showPodCount,
+			showSecurityPerimeters,
+			showNodeGroups,
+			availableFormat, podLabels, nodeLabels,
 			namespaceLabels, namespace, kubeContext, kubeConfig, outputFormat, sortBy)
 	},
 }
@@ -58,6 +63,10 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&showContainers,
 		"containers", "c", false, "includes containers in output")
+	rootCmd.PersistentFlags().BoolVarP(&showSecurityPerimeters,
+		"show-perimeters", "", false, "show security perimeters")
+	rootCmd.PersistentFlags().BoolVarP(&showNodeGroups,
+		"show-nodegroups", "", false, "show node groups")
 	rootCmd.PersistentFlags().BoolVarP(&showPods,
 		"pods", "p", false, "includes pods in output")
 	rootCmd.PersistentFlags().BoolVarP(&showUtil,

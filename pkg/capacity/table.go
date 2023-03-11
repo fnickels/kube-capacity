@@ -22,15 +22,17 @@ import (
 )
 
 type tablePrinter struct {
-	cm              *clusterMetric
-	showPods        bool
-	showUtil        bool
-	showPodCount    bool
-	showContainers  bool
-	showNamespace   bool
-	sortBy          string
-	w               *tabwriter.Writer
-	availableFormat bool
+	cm                     *clusterMetric
+	showPods               bool
+	showUtil               bool
+	showPodCount           bool
+	showContainers         bool
+	showNamespace          bool
+	showSecurityPerimeters bool
+	showNodeGroups         bool
+	sortBy                 string
+	w                      *tabwriter.Writer
+	availableFormat        bool
 }
 
 type tableLine struct {

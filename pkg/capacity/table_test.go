@@ -22,27 +22,33 @@ import (
 
 func TestGetLineItems(t *testing.T) {
 	tpNone := &tablePrinter{
-		showPods:       false,
-		showUtil:       false,
-		showPodCount:   false,
-		showContainers: false,
-		showNamespace:  false,
+		showPods:               false,
+		showUtil:               false,
+		showPodCount:           false,
+		showContainers:         false,
+		showNamespace:          false,
+		showSecurityPerimeters: false,
+		showNodeGroups:         false,
 	}
 
 	tpSome := &tablePrinter{
-		showPods:       false,
-		showUtil:       false,
-		showPodCount:   false,
-		showContainers: true,
-		showNamespace:  true,
+		showPods:               false,
+		showUtil:               false,
+		showPodCount:           false,
+		showContainers:         true,
+		showNamespace:          true,
+		showSecurityPerimeters: true,
+		showNodeGroups:         true,
 	}
 
 	tpAll := &tablePrinter{
-		showPods:       true,
-		showUtil:       true,
-		showContainers: true,
-		showNamespace:  true,
-		showPodCount:   true,
+		showPods:               true,
+		showUtil:               true,
+		showContainers:         true,
+		showNamespace:          true,
+		showPodCount:           true,
+		showSecurityPerimeters: true,
+		showNodeGroups:         true,
 	}
 
 	tl := &tableLine{

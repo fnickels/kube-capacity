@@ -71,11 +71,13 @@ func TestBuildListClusterMetricsAllOptions(t *testing.T) {
 	cm := getTestClusterMetric()
 
 	lp := listPrinter{
-		cm:             &cm,
-		showUtil:       true,
-		showPods:       true,
-		showContainers: true,
-		showPodCount:   true,
+		cm:                     &cm,
+		showUtil:               true,
+		showPods:               true,
+		showContainers:         true,
+		showPodCount:           true,
+		showSecurityPerimeters: true,
+		showNodeGroups:         true,
 	}
 
 	lcm := lp.buildListClusterMetrics()

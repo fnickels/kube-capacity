@@ -64,12 +64,14 @@ type listClusterTotals struct {
 }
 
 type listPrinter struct {
-	cm             *clusterMetric
-	showPods       bool
-	showContainers bool
-	showUtil       bool
-	showPodCount   bool
-	sortBy         string
+	cm                     *clusterMetric
+	showPods               bool
+	showContainers         bool
+	showUtil               bool
+	showPodCount           bool
+	showSecurityPerimeters bool
+	showNodeGroups         bool
+	sortBy                 string
 }
 
 func (lp listPrinter) Print(outputType string) {
