@@ -94,12 +94,12 @@ func (cp *csvPrinter) Print(outputType string) {
 	sortedNodeMetrics := cp.cm.getSortedNodeMetrics(cp.sortBy)
 
 	if cp.displayNodeLabel != "" {
-		headerStrings.label = cp.displayNodeLabel
+		csvHeaderStrings.label = cp.displayNodeLabel
 	}
 
 	if cp.showAllNodeLabels {
 		cp.uniqueNodeLabels = cp.cm.getUniqueNodeLabels()
-		headerStrings.allLabels = cp.uniqueNodeLabels
+		csvHeaderStrings.allLabels = cp.uniqueNodeLabels
 	}
 
 	cp.printLine(&csvHeaderStrings)

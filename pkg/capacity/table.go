@@ -52,7 +52,7 @@ type tableLine struct {
 	allLabels      []string
 }
 
-var headerStrings = tableLine{
+var tableHeaderStrings = tableLine{
 	node:           "NODE",
 	namespace:      "NAMESPACE",
 	pod:            "POD",
@@ -73,15 +73,15 @@ func (tp *tablePrinter) Print() {
 	sortedNodeMetrics := tp.cm.getSortedNodeMetrics(tp.sortBy)
 
 	if tp.displayNodeLabel != "" {
-		headerStrings.label = tp.displayNodeLabel
+		tableHeaderStrings.label = tp.displayNodeLabel
 	}
 
 	if tp.showAllNodeLabels {
 		tp.uniqueNodeLabels = tp.cm.getUniqueNodeLabels()
-		headerStrings.allLabels = tp.uniqueNodeLabels
+		tableHeaderStrings.allLabels = tp.uniqueNodeLabels
 	}
 
-	tp.printLine(&headerStrings)
+	tp.printLine(&tableHeaderStrings)
 
 	if len(sortedNodeMetrics) > 1 {
 		tp.printClusterLine()
