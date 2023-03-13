@@ -86,6 +86,9 @@ var csvHeaderStrings = csvLine{
 	allLabels:                []string{"labels"},
 }
 
+const QuoteEscape = "\""
+const VoidValue = QuoteEscape + "*" + QuoteEscape
+
 func (cp *csvPrinter) Print(outputType string) {
 
 	cp.file = os.Stdout
@@ -114,11 +117,11 @@ func (cp *csvPrinter) Print(outputType string) {
 		if cp.showPods || cp.showContainers {
 			podMetrics := nm.getSortedPodMetrics(cp.sortBy)
 			for _, pm := range podMetrics {
-				cp.printPodLine(nm.name, pm)
+				cp.printPodLine(nm.name, nm, pm)
 				if cp.showContainers {
 					containerMetrics := pm.getSortedContainerMetrics(cp.sortBy)
 					for _, containerMetric := range containerMetrics {
-						cp.printContainerLine(nm.name, pm, containerMetric)
+						cp.printContainerLine(nm.name, nm, pm, containerMetric)
 					}
 				}
 			}
@@ -138,17 +141,21 @@ func (cp *csvPrinter) printLine(cl *csvLine) {
 }
 
 func (cp *csvPrinter) getLineItems(cl *csvLine) []string {
-	lineItems := []string{"\"" + cl.node + "\""}
+	lineItems := []string{QuoteEscape + cl.node + QuoteEscape}
+
+	if cp.displayNodeLabel != "" {
+		lineItems = append(lineItems, QuoteEscape+cl.label+QuoteEscape)
+	}
 
 	if cp.showContainers || cp.showPods {
 		if cp.showNamespace {
-			lineItems = append(lineItems, "\""+cl.namespace+"\"")
+			lineItems = append(lineItems, QuoteEscape+cl.namespace+QuoteEscape)
 		}
-		lineItems = append(lineItems, "\""+cl.pod+"\"")
+		lineItems = append(lineItems, QuoteEscape+cl.pod+QuoteEscape)
 	}
 
 	if cp.showContainers {
-		lineItems = append(lineItems, "\""+cl.container+"\"")
+		lineItems = append(lineItems, QuoteEscape+cl.container+QuoteEscape)
 	}
 
 	lineItems = append(lineItems, cl.cpuCapacity)
@@ -178,15 +185,26 @@ func (cp *csvPrinter) getLineItems(cl *csvLine) []string {
 		lineItems = append(lineItems, cl.podCountAllocatable)
 	}
 
+	if cp.showAllNodeLabels {
+		for _, x := range cl.allLabels {
+			lineItems = append(lineItems, x)
+		}
+	}
+
 	return lineItems
 }
 
 func (cp *csvPrinter) printClusterLine() {
+	allLabels := []string{}
+	for i := 1; i < len(cp.uniqueNodeLabels); i++ {
+		allLabels = append(allLabels, VoidValue)
+	}
 	cp.printLine(&csvLine{
-		node:                     "*",
-		namespace:                "*",
-		pod:                      "*",
-		container:                "*",
+		node:                     VoidValue,
+		namespace:                VoidValue,
+		pod:                      VoidValue,
+		container:                VoidValue,
+		label:                    VoidValue,
 		cpuCapacity:              cp.cm.cpu.capacityString(),
 		cpuRequests:              cp.cm.cpu.requestActualString(),
 		cpuRequestsPercentage:    cp.cm.cpu.requestPercentageString(),
@@ -203,15 +221,21 @@ func (cp *csvPrinter) printClusterLine() {
 		memoryUtilPercentage:     cp.cm.memory.utilPercentageString(),
 		podCountCurrent:          cp.cm.podCount.podCountCurrentString(),
 		podCountAllocatable:      cp.cm.podCount.podCountAllocatableString(),
+		allLabels:                allLabels,
 	})
 }
 
 func (cp *csvPrinter) printNodeLine(nodeName string, nm *nodeMetric) {
+	allLabels := []string{}
+	for _, label := range cp.uniqueNodeLabels {
+		allLabels = append(allLabels, nm.nodeLabels[label])
+	}
 	cp.printLine(&csvLine{
 		node:                     nodeName,
-		namespace:                "*",
-		pod:                      "*",
-		container:                "*",
+		namespace:                VoidValue,
+		pod:                      VoidValue,
+		container:                VoidValue,
+		label:                    nm.nodeLabels[cp.displayNodeLabel],
 		cpuCapacity:              nm.cpu.capacityString(),
 		cpuRequests:              nm.cpu.requestActualString(),
 		cpuRequestsPercentage:    nm.cpu.requestPercentageString(),
@@ -228,15 +252,21 @@ func (cp *csvPrinter) printNodeLine(nodeName string, nm *nodeMetric) {
 		memoryUtilPercentage:     nm.memory.utilPercentageString(),
 		podCountCurrent:          nm.podCount.podCountCurrentString(),
 		podCountAllocatable:      nm.podCount.podCountAllocatableString(),
+		allLabels:                allLabels,
 	})
 }
 
-func (cp *csvPrinter) printPodLine(nodeName string, pm *podMetric) {
+func (cp *csvPrinter) printPodLine(nodeName string, nm *nodeMetric, pm *podMetric) {
+	allLabels := []string{}
+	for _, label := range cp.uniqueNodeLabels {
+		allLabels = append(allLabels, nm.nodeLabels[label])
+	}
 	cp.printLine(&csvLine{
 		node:                     nodeName,
 		namespace:                pm.namespace,
 		pod:                      pm.name,
-		container:                "*",
+		container:                VoidValue,
+		label:                    nm.nodeLabels[cp.displayNodeLabel],
 		cpuCapacity:              pm.cpu.capacityString(),
 		cpuRequests:              pm.cpu.requestActualString(),
 		cpuRequestsPercentage:    pm.cpu.requestPercentageString(),
@@ -251,15 +281,21 @@ func (cp *csvPrinter) printPodLine(nodeName string, pm *podMetric) {
 		memoryLimitsPercentage:   pm.memory.limitPercentageString(),
 		memoryUtil:               pm.memory.utilActualString(),
 		memoryUtilPercentage:     pm.memory.utilPercentageString(),
+		allLabels:                allLabels,
 	})
 }
 
-func (cp *csvPrinter) printContainerLine(nodeName string, pm *podMetric, cm *containerMetric) {
+func (cp *csvPrinter) printContainerLine(nodeName string, nm *nodeMetric, pm *podMetric, cm *containerMetric) {
+	allLabels := []string{}
+	for _, label := range cp.uniqueNodeLabels {
+		allLabels = append(allLabels, nm.nodeLabels[label])
+	}
 	cp.printLine(&csvLine{
 		node:                     nodeName,
 		namespace:                pm.namespace,
 		pod:                      pm.name,
 		container:                cm.name,
+		label:                    nm.nodeLabels[cp.displayNodeLabel],
 		cpuCapacity:              cm.cpu.capacityString(),
 		cpuRequests:              cm.cpu.requestActualString(),
 		cpuRequestsPercentage:    cm.cpu.requestPercentageString(),
@@ -274,5 +310,6 @@ func (cp *csvPrinter) printContainerLine(nodeName string, pm *podMetric, cm *con
 		memoryLimitsPercentage:   cm.memory.limitPercentageString(),
 		memoryUtil:               cm.memory.utilActualString(),
 		memoryUtilPercentage:     cm.memory.utilPercentageString(),
+		allLabels:                allLabels,
 	})
 }
