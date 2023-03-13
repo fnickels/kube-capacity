@@ -169,15 +169,15 @@ func (tp *tablePrinter) printClusterLine() {
 
 	allLabels := []string{}
 	for i := 1; i < len(tp.uniqueNodeLabels); i++ {
-		allLabels = append(allLabels, "*")
+		allLabels = append(allLabels, VoidValue)
 	}
 
 	tp.printLine(&tableLine{
-		node:           "*",
-		namespace:      "*",
-		pod:            "*",
-		container:      "*",
-		label:          "*",
+		node:           VoidValue,
+		namespace:      VoidValue,
+		pod:            VoidValue,
+		container:      VoidValue,
+		label:          VoidValue,
 		cpuRequests:    tp.cm.cpu.requestString(tp.availableFormat),
 		cpuLimits:      tp.cm.cpu.limitString(tp.availableFormat),
 		cpuUtil:        tp.cm.cpu.utilString(tp.availableFormat),
@@ -196,9 +196,9 @@ func (tp *tablePrinter) printNodeLine(nodeName string, nm *nodeMetric) {
 	}
 	tp.printLine(&tableLine{
 		node:           nodeName,
-		namespace:      "*",
-		pod:            "*",
-		container:      "*",
+		namespace:      VoidValue,
+		pod:            VoidValue,
+		container:      VoidValue,
 		label:          nm.nodeLabels[tp.displayNodeLabel],
 		cpuRequests:    nm.cpu.requestString(tp.availableFormat),
 		cpuLimits:      nm.cpu.limitString(tp.availableFormat),
@@ -220,7 +220,7 @@ func (tp *tablePrinter) printPodLine(nodeName string, nm *nodeMetric, pm *podMet
 		node:           nodeName,
 		namespace:      pm.namespace,
 		pod:            pm.name,
-		container:      "*",
+		container:      VoidValue,
 		label:          nm.nodeLabels[tp.displayNodeLabel],
 		cpuRequests:    pm.cpu.requestString(tp.availableFormat),
 		cpuLimits:      pm.cpu.limitString(tp.availableFormat),
