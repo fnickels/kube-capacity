@@ -79,13 +79,15 @@ func printList(cm *clusterMetric,
 		tp.Print()
 	} else if output == CSVOutput || output == TSVOutput {
 		cp := &csvPrinter{
-			cm:             cm,
-			showPods:       showPods,
-			showUtil:       showUtil,
-			showPodCount:   showPodCount,
-			showContainers: showContainers,
-			showNamespace:  showNamespace,
-			sortBy:         sortBy,
+			cm:                cm,
+			showPods:          showPods,
+			showUtil:          showUtil,
+			showPodCount:      showPodCount,
+			showContainers:    showContainers,
+			showNamespace:     showNamespace,
+			showAllNodeLabels: showAllNodeLabels,
+			displayNodeLabel:  displayNodeLabel,
+			sortBy:            sortBy,
 		}
 		cp.Print(output)
 	} else {

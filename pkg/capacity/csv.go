@@ -22,15 +22,18 @@ import (
 )
 
 type csvPrinter struct {
-	cm             *clusterMetric
-	showPods       bool
-	showUtil       bool
-	showPodCount   bool
-	showContainers bool
-	showNamespace  bool
-	sortBy         string
-	file           io.Writer
-	separator      string
+	cm                *clusterMetric
+	showPods          bool
+	showUtil          bool
+	showPodCount      bool
+	showContainers    bool
+	showNamespace     bool
+	showAllNodeLabels bool
+	displayNodeLabel  string
+	sortBy            string
+	file              io.Writer
+	separator         string
+	uniqueNodeLabels  []string
 }
 
 type csvLine struct {
@@ -38,6 +41,7 @@ type csvLine struct {
 	namespace                string
 	pod                      string
 	container                string
+	label                    string
 	cpuCapacity              string
 	cpuRequests              string
 	cpuRequestsPercentage    string
@@ -54,6 +58,7 @@ type csvLine struct {
 	memoryUtilPercentage     string
 	podCountCurrent          string
 	podCountAllocatable      string
+	allLabels                []string
 }
 
 var csvHeaderStrings = csvLine{
@@ -61,6 +66,7 @@ var csvHeaderStrings = csvLine{
 	namespace:                "NAMESPACE",
 	pod:                      "POD",
 	container:                "CONTAINER",
+	label:                    "LABEL",
 	cpuCapacity:              "CPU CAPACITY (milli)",
 	cpuRequests:              "CPU REQUESTS",
 	cpuRequestsPercentage:    "CPU REQUESTS %%",
@@ -77,6 +83,7 @@ var csvHeaderStrings = csvLine{
 	memoryUtilPercentage:     "MEMORY UTIL %%",
 	podCountCurrent:          "POD COUNT CURRENT",
 	podCountAllocatable:      "POD COUNT ALLOCATABLE",
+	allLabels:                []string{"labels"},
 }
 
 func (cp *csvPrinter) Print(outputType string) {
@@ -85,6 +92,15 @@ func (cp *csvPrinter) Print(outputType string) {
 	cp.separator = outputType
 
 	sortedNodeMetrics := cp.cm.getSortedNodeMetrics(cp.sortBy)
+
+	if cp.displayNodeLabel != "" {
+		headerStrings.label = cp.displayNodeLabel
+	}
+
+	if cp.showAllNodeLabels {
+		cp.uniqueNodeLabels = cp.cm.getUniqueNodeLabels()
+		headerStrings.allLabels = cp.uniqueNodeLabels
+	}
 
 	cp.printLine(&csvHeaderStrings)
 
