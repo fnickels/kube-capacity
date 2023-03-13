@@ -22,11 +22,12 @@ import (
 )
 
 type listNodeMetric struct {
-	Name     string              `json:"name"`
-	CPU      *listResourceOutput `json:"cpu,omitempty"`
-	Memory   *listResourceOutput `json:"memory,omitempty"`
-	Pods     []*listPod          `json:"pods,omitempty"`
-	PodCount string              `json:"podCount,omitempty"`
+	Name       string              `json:"name"`
+	CPU        *listResourceOutput `json:"cpu,omitempty"`
+	Memory     *listResourceOutput `json:"memory,omitempty"`
+	Pods       []*listPod          `json:"pods,omitempty"`
+	PodCount   string              `json:"podCount,omitempty"`
+	NodeLabels map[string]string   `json:"nodelabels,omitempty"`
 }
 
 type listPod struct {
@@ -64,12 +65,14 @@ type listClusterTotals struct {
 }
 
 type listPrinter struct {
-	cm             *clusterMetric
-	showPods       bool
-	showContainers bool
-	showUtil       bool
-	showPodCount   bool
-	sortBy         string
+	cm                *clusterMetric
+	showPods          bool
+	showContainers    bool
+	showUtil          bool
+	showPodCount      bool
+	showAllNodeLabels bool
+	displayNodeLabel  string
+	sortBy            string
 }
 
 func (lp listPrinter) Print(outputType string) {
@@ -114,6 +117,12 @@ func (lp *listPrinter) buildListClusterMetrics() listClusterMetrics {
 		node.Name = nodeMetric.name
 		node.CPU = lp.buildListResourceOutput(nodeMetric.cpu)
 		node.Memory = lp.buildListResourceOutput(nodeMetric.memory)
+
+		if lp.showAllNodeLabels {
+			node.NodeLabels = nodeMetric.nodeLabels
+		} else if lp.displayNodeLabel != "" {
+			node.NodeLabels = map[string]string{lp.displayNodeLabel: nodeMetric.nodeLabels[lp.displayNodeLabel]}
+		}
 
 		if lp.showPodCount {
 			node.PodCount = nodeMetric.podCount.podCountString()

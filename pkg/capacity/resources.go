@@ -65,6 +65,7 @@ type nodeMetric struct {
 	memory     *resourceMetric
 	podMetrics map[string]*podMetric
 	podCount   *podCount
+	nodeLabels map[string]string
 }
 
 type podMetric struct {
@@ -121,6 +122,7 @@ func buildClusterMetric(podList *corev1.PodList, pmList *v1beta1.PodMetricsList,
 				current:     tmpPodCount,
 				allocatable: node.Status.Allocatable.Pods().Value(),
 			},
+			nodeLabels: node.GetLabels(),
 		}
 	}
 
@@ -232,6 +234,27 @@ func (cm *clusterMetric) addPodMetric(pod *corev1.Pod, podMetrics v1beta1.PodMet
 func (cm *clusterMetric) addNodeMetric(nm *nodeMetric) {
 	cm.cpu.addMetric(nm.cpu)
 	cm.memory.addMetric(nm.memory)
+}
+
+func (cm *clusterMetric) getUniqueNodeLabels() []string {
+	result := []string{}
+
+	for name := range cm.nodeMetrics {
+		for k, _ := range cm.nodeMetrics[name].nodeLabels {
+			found := false
+			for _, b := range result {
+				if k == b {
+					found = true
+					break
+				}
+			}
+			if !found {
+				result = append(result, k)
+			}
+		}
+	}
+
+	return result
 }
 
 func (cm *clusterMetric) getSortedNodeMetrics(sortBy string) []*nodeMetric {
