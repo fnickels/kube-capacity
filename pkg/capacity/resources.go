@@ -411,9 +411,9 @@ func (rm *resourceMetric) utilString(availableFormat bool) string {
 	return resourceString(rm.resourceType, rm.utilization, rm.allocatable, availableFormat)
 }
 
-// podCountString returns the string representation of podCount struct, example: "15/110"
+// podCountString returns the string representation of podCount struct, example: "15/110 (12%)"
 func (pc *podCount) podCountString() string {
-	return fmt.Sprintf("%d/%d", pc.current, pc.allocatable)
+	return fmt.Sprintf("%d/%d (%d%%%%)", pc.current, pc.allocatable, int64(100.0*float64(pc.current)/float64(pc.allocatable)))
 }
 
 func resourceString(resourceType string, actual, allocatable resource.Quantity, availableFormat bool) string {
@@ -484,7 +484,14 @@ func (rm resourceMetric) percentFunction() (f func(r resource.Quantity) string) 
 }
 
 func (rm resourceMetric) percent(r resource.Quantity) int64 {
-	return int64(float64(r.MilliValue()) / float64(rm.allocatable.MilliValue()) * 100)
+	return percentRawFunction(float64(r.MilliValue()), float64(rm.allocatable.MilliValue()))
+}
+
+func percentRawFunction(nominator, denominator float64) int64 {
+	if denominator > 0.0 {
+		return int64(100.0 * nominator / denominator)
+	}
+	return 0
 }
 
 // For CSV / TSV formatting Helper Functions
@@ -497,14 +504,6 @@ func resourceCSVString(resourceType string, actual resource.Quantity) string {
 	return fmt.Sprintf("%d", actual.Value())
 }
 
-func resourceCSVPercentageString(actual, divisor resource.Quantity) string {
-	utilPercent := float64(0)
-	if divisor.MilliValue() > 0 {
-		utilPercent = float64(actual.MilliValue()) / float64(divisor.MilliValue()) * 100
-	}
-	return fmt.Sprintf("%d", int64(utilPercent))
-}
-
 func (rm *resourceMetric) capacityString() string {
 	return resourceCSVString(rm.resourceType, rm.allocatable)
 }
@@ -514,7 +513,7 @@ func (rm *resourceMetric) requestActualString() string {
 }
 
 func (rm *resourceMetric) requestPercentageString() string {
-	return resourceCSVPercentageString(rm.request, rm.allocatable)
+	return rm.percentFunction()(rm.request)
 }
 
 func (rm *resourceMetric) limitActualString() string {
@@ -522,7 +521,7 @@ func (rm *resourceMetric) limitActualString() string {
 }
 
 func (rm *resourceMetric) limitPercentageString() string {
-	return resourceCSVPercentageString(rm.limit, rm.allocatable)
+	return rm.percentFunction()(rm.limit)
 }
 
 func (rm *resourceMetric) utilActualString() string {
@@ -530,7 +529,7 @@ func (rm *resourceMetric) utilActualString() string {
 }
 
 func (rm *resourceMetric) utilPercentageString() string {
-	return resourceCSVPercentageString(rm.utilization, rm.allocatable)
+	return rm.percentFunction()(rm.utilization)
 }
 
 func (pc *podCount) podCountCurrentString() string {
@@ -539,4 +538,8 @@ func (pc *podCount) podCountCurrentString() string {
 
 func (pc *podCount) podCountAllocatableString() string {
 	return fmt.Sprintf("%d", pc.allocatable)
+}
+
+func (pc *podCount) podCountPercentageString() string {
+	return fmt.Sprintf("%d", percentRawFunction(float64(pc.current), float64(pc.allocatable)))
 }

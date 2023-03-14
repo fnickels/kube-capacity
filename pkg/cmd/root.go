@@ -85,6 +85,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&namespaceLabels,
 		"namespace-labels", "", "", "labels to filter namespaces with")
 	rootCmd.PersistentFlags().StringVarP(&namespace,
+		"binpack-analysis", "b", "", "add node binpack analysis fields")
+	rootCmd.PersistentFlags().StringVarP(&namespace,
 		"namespace", "n", "", "only include pods from this namespace")
 	rootCmd.PersistentFlags().StringVarP(&kubeContext,
 		"context", "", "", "context to use for Kubernetes config")
