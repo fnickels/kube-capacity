@@ -32,13 +32,13 @@ import (
 func FetchAndPrint(
 	showContainers, showPods, showUtil, showPodCount, showAllNodeLabels,
 	availableFormat bool,
-	podLabels, nodeLabels, displayNodeLabel,
+	podLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
 	namespaceLabels, namespace,
 	kubeContext, kubeConfig, output, sortBy string) {
 
 	clientset, err := kube.NewClientSet(kubeContext, kubeConfig)
 	if err != nil {
-		fmt.Printf("Error connecting to Kubernetes: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error connecting to Kubernetes: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -49,7 +49,7 @@ func FetchAndPrint(
 	if showUtil {
 		mClientset, err := kube.NewMetricsClientSet(kubeContext, kubeConfig)
 		if err != nil {
-			fmt.Printf("Error connecting to Metrics API: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error connecting to Metrics API: %v\n", err)
 			os.Exit(4)
 		}
 
@@ -64,7 +64,7 @@ func FetchAndPrint(
 
 	printList(&cm,
 		showContainers, showPods, showUtil, showPodCount, showNamespace, showAllNodeLabels,
-		displayNodeLabel,
+		displayNodeLabels, groupByNodeLabels,
 		output, sortBy, availableFormat)
 }
 
@@ -73,7 +73,7 @@ func getPodsAndNodes(clientset kubernetes.Interface, podLabels, nodeLabels, name
 		LabelSelector: nodeLabels,
 	})
 	if err != nil {
-		fmt.Printf("Error listing Nodes: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error listing Nodes: %v\n", err)
 		os.Exit(2)
 	}
 
@@ -81,7 +81,7 @@ func getPodsAndNodes(clientset kubernetes.Interface, podLabels, nodeLabels, name
 		LabelSelector: podLabels,
 	})
 	if err != nil {
-		fmt.Printf("Error listing Pods: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error listing Pods: %v\n", err)
 		os.Exit(3)
 	}
 
@@ -107,7 +107,7 @@ func getPodsAndNodes(clientset kubernetes.Interface, podLabels, nodeLabels, name
 			LabelSelector: namespaceLabels,
 		})
 		if err != nil {
-			fmt.Printf("Error listing Namespaces: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error listing Namespaces: %v\n", err)
 			os.Exit(3)
 		}
 
@@ -135,8 +135,8 @@ func getPodsAndNodes(clientset kubernetes.Interface, podLabels, nodeLabels, name
 func getPodMetrics(mClientset *metrics.Clientset, namespace string) *v1beta1.PodMetricsList {
 	pmList, err := mClientset.MetricsV1beta1().PodMetricses(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		fmt.Printf("Error getting Pod Metrics: %v\n", err)
-		fmt.Println("For this to work, metrics-server needs to be running in your cluster")
+		fmt.Fprintf(os.Stderr, "Error getting Pod Metrics: %v\n", err)
+		fmt.Fprintf(os.Stderr, "For this to work, metrics-server needs to be running in your cluster\n")
 		os.Exit(6)
 	}
 
@@ -148,8 +148,8 @@ func getNodeMetrics(mClientset *metrics.Clientset, nodeLabels string) *v1beta1.N
 		LabelSelector: nodeLabels,
 	})
 	if err != nil {
-		fmt.Printf("Error getting Node Metrics: %v\n", err)
-		fmt.Println("For this to work, metrics-server needs to be running in your cluster")
+		fmt.Fprintf(os.Stderr, "Error getting Node Metrics: %v\n", err)
+		fmt.Fprintf(os.Stderr, "For this to work, metrics-server needs to be running in your cluster\n")
 		os.Exit(7)
 	}
 

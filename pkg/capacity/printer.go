@@ -46,7 +46,7 @@ func SupportedOutputs() []string {
 
 func printList(cm *clusterMetric,
 	showContainers, showPods, showUtil, showPodCount, showNamespace, showAllNodeLabels bool,
-	displayNodeLabel,
+	displayNodeLabels, groupByNodeLabels,
 	output, sortBy string,
 	availableFormat bool) {
 
@@ -58,8 +58,9 @@ func printList(cm *clusterMetric,
 			showContainers:    showContainers,
 			showPodCount:      showPodCount,
 			showAllNodeLabels: showAllNodeLabels,
-			displayNodeLabel:  displayNodeLabel,
-			sortBy:            sortBy,
+			displayNodeLabels: displayNodeLabels,
+			// groupByNodeLabels: groupByNodeLabels, // grouping is not applicable to json and yaml
+			sortBy: sortBy,
 		}
 		lp.Print(output)
 	} else if output == TableOutput {
@@ -71,7 +72,8 @@ func printList(cm *clusterMetric,
 			showContainers:    showContainers,
 			showNamespace:     showNamespace,
 			showAllNodeLabels: showAllNodeLabels,
-			displayNodeLabel:  displayNodeLabel,
+			displayNodeLabels: displayNodeLabels,
+			groupByNodeLabels: groupByNodeLabels,
 			sortBy:            sortBy,
 			w:                 new(tabwriter.Writer),
 			availableFormat:   availableFormat,
@@ -86,12 +88,13 @@ func printList(cm *clusterMetric,
 			showContainers:    showContainers,
 			showNamespace:     showNamespace,
 			showAllNodeLabels: showAllNodeLabels,
-			displayNodeLabel:  displayNodeLabel,
+			displayNodeLabels: displayNodeLabels,
+			groupByNodeLabels: groupByNodeLabels,
 			sortBy:            sortBy,
 		}
 		cp.Print(output)
 	} else {
-		fmt.Printf("Called with an unsupported output type: %s", output)
+		fmt.Fprintf(os.Stderr, "Called with an unsupported output type: %s", output)
 		os.Exit(1)
 	}
 }

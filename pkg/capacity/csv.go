@@ -22,18 +22,21 @@ import (
 )
 
 type csvPrinter struct {
-	cm                *clusterMetric
-	showPods          bool
-	showUtil          bool
-	showPodCount      bool
-	showContainers    bool
-	showNamespace     bool
-	showAllNodeLabels bool
-	displayNodeLabel  string
-	sortBy            string
-	file              io.Writer
-	separator         string
-	uniqueNodeLabels  []string
+	cm                        *clusterMetric
+	showPods                  bool
+	showUtil                  bool
+	showPodCount              bool
+	showContainers            bool
+	showNamespace             bool
+	showAllNodeLabels         bool
+	displayNodeLabels         string
+	groupByNodeLabels         string
+	sortBy                    string
+	file                      io.Writer
+	separator                 string
+	uniqueGroupByNodeLabels   []string
+	uniqueDisplayNodeLabels   []string
+	uniqueRemainderNodeLabels []string
 }
 
 type csvLine struct {
@@ -41,7 +44,6 @@ type csvLine struct {
 	namespace                string
 	pod                      string
 	container                string
-	label                    string
 	cpuCapacity              string
 	cpuRequests              string
 	cpuRequestsPercentage    string
@@ -58,7 +60,9 @@ type csvLine struct {
 	memoryUtilPercentage     string
 	podCountCurrent          string
 	podCountAllocatable      string
-	allLabels                []string
+	groupByLabels            []string
+	displayLabels            []string
+	remainderLabels          []string
 }
 
 var csvHeaderStrings = csvLine{
@@ -66,7 +70,6 @@ var csvHeaderStrings = csvLine{
 	namespace:                "NAMESPACE",
 	pod:                      "POD",
 	container:                "CONTAINER",
-	label:                    "LABEL",
 	cpuCapacity:              "CPU CAPACITY (milli)",
 	cpuRequests:              "CPU REQUESTS",
 	cpuRequestsPercentage:    "CPU REQUESTS %%",
@@ -83,7 +86,9 @@ var csvHeaderStrings = csvLine{
 	memoryUtilPercentage:     "MEMORY UTIL %%",
 	podCountCurrent:          "POD COUNT CURRENT",
 	podCountAllocatable:      "POD COUNT ALLOCATABLE",
-	allLabels:                []string{"labels"},
+	groupByLabels:            []string{},
+	displayLabels:            []string{},
+	remainderLabels:          []string{},
 }
 
 func (cp *csvPrinter) Print(outputType string) {
@@ -93,14 +98,23 @@ func (cp *csvPrinter) Print(outputType string) {
 
 	sortedNodeMetrics := cp.cm.getSortedNodeMetrics(cp.sortBy)
 
-	if cp.displayNodeLabel != "" {
-		csvHeaderStrings.label = cp.displayNodeLabel
+	var err error
+
+	// process Node Label selection elements
+	cp.uniqueGroupByNodeLabels,
+		cp.uniqueDisplayNodeLabels,
+		cp.uniqueRemainderNodeLabels,
+		err = processNodeLabelSelections(cp.cm, cp.groupByNodeLabels, cp.displayNodeLabels, cp.showAllNodeLabels)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
 	}
 
-	if cp.showAllNodeLabels {
-		cp.uniqueNodeLabels = cp.cm.getUniqueNodeLabels()
-		csvHeaderStrings.allLabels = cp.uniqueNodeLabels
-	}
+	// copy Node Label names to the Header object
+	csvHeaderStrings.groupByLabels = cp.uniqueGroupByNodeLabels
+	csvHeaderStrings.displayLabels = cp.uniqueDisplayNodeLabels
+	csvHeaderStrings.remainderLabels = cp.uniqueRemainderNodeLabels
 
 	cp.printLine(&csvHeaderStrings)
 
@@ -140,8 +154,14 @@ func (cp *csvPrinter) printLine(cl *csvLine) {
 func (cp *csvPrinter) getLineItems(cl *csvLine) []string {
 	lineItems := []string{CSVStringTerminator + cl.node + CSVStringTerminator}
 
-	if cp.displayNodeLabel != "" {
-		lineItems = append(lineItems, CSVStringTerminator+cl.label+CSVStringTerminator)
+	// add any 'Group By' Node Labels which are specified here
+	for _, x := range cl.groupByLabels {
+		lineItems = append(lineItems, CSVStringTerminator+x+CSVStringTerminator)
+	}
+
+	// add any 'Display' Node Labels which are specified here
+	for _, x := range cl.displayLabels {
+		lineItems = append(lineItems, CSVStringTerminator+x+CSVStringTerminator)
 	}
 
 	if cp.showContainers || cp.showPods {
@@ -182,26 +202,20 @@ func (cp *csvPrinter) getLineItems(cl *csvLine) []string {
 		lineItems = append(lineItems, cl.podCountAllocatable)
 	}
 
-	if cp.showAllNodeLabels {
-		for _, x := range cl.allLabels {
-			lineItems = append(lineItems, x)
-		}
+	// if any remaining Node Labels have been specified to be displayed add them here
+	for _, x := range cl.remainderLabels {
+		lineItems = append(lineItems, CSVStringTerminator+x+CSVStringTerminator)
 	}
 
 	return lineItems
 }
 
 func (cp *csvPrinter) printClusterLine() {
-	allLabels := []string{}
-	for i := 1; i < len(cp.uniqueNodeLabels); i++ {
-		allLabels = append(allLabels, VoidValue)
-	}
 	cp.printLine(&csvLine{
 		node:                     VoidValue,
 		namespace:                VoidValue,
 		pod:                      VoidValue,
 		container:                VoidValue,
-		label:                    VoidValue,
 		cpuCapacity:              cp.cm.cpu.capacityString(),
 		cpuRequests:              cp.cm.cpu.requestActualString(),
 		cpuRequestsPercentage:    cp.cm.cpu.requestPercentageString(),
@@ -218,21 +232,18 @@ func (cp *csvPrinter) printClusterLine() {
 		memoryUtilPercentage:     cp.cm.memory.utilPercentageString(),
 		podCountCurrent:          cp.cm.podCount.podCountCurrentString(),
 		podCountAllocatable:      cp.cm.podCount.podCountAllocatableString(),
-		allLabels:                allLabels,
+		groupByLabels:            setMultipleVoids(len(cp.uniqueGroupByNodeLabels)),
+		displayLabels:            setMultipleVoids(len(cp.uniqueDisplayNodeLabels)),
+		remainderLabels:          setMultipleVoids(len(cp.uniqueRemainderNodeLabels)),
 	})
 }
 
 func (cp *csvPrinter) printNodeLine(nodeName string, nm *nodeMetric) {
-	allLabels := []string{}
-	for _, label := range cp.uniqueNodeLabels {
-		allLabels = append(allLabels, nm.nodeLabels[label])
-	}
 	cp.printLine(&csvLine{
 		node:                     nodeName,
 		namespace:                VoidValue,
 		pod:                      VoidValue,
 		container:                VoidValue,
-		label:                    nm.nodeLabels[cp.displayNodeLabel],
 		cpuCapacity:              nm.cpu.capacityString(),
 		cpuRequests:              nm.cpu.requestActualString(),
 		cpuRequestsPercentage:    nm.cpu.requestPercentageString(),
@@ -249,21 +260,18 @@ func (cp *csvPrinter) printNodeLine(nodeName string, nm *nodeMetric) {
 		memoryUtilPercentage:     nm.memory.utilPercentageString(),
 		podCountCurrent:          nm.podCount.podCountCurrentString(),
 		podCountAllocatable:      nm.podCount.podCountAllocatableString(),
-		allLabels:                allLabels,
+		groupByLabels:            setNodeLabels(cp.uniqueGroupByNodeLabels, nm),
+		displayLabels:            setNodeLabels(cp.uniqueDisplayNodeLabels, nm),
+		remainderLabels:          setNodeLabels(cp.uniqueRemainderNodeLabels, nm),
 	})
 }
 
 func (cp *csvPrinter) printPodLine(nodeName string, nm *nodeMetric, pm *podMetric) {
-	allLabels := []string{}
-	for _, label := range cp.uniqueNodeLabels {
-		allLabels = append(allLabels, nm.nodeLabels[label])
-	}
 	cp.printLine(&csvLine{
 		node:                     nodeName,
 		namespace:                pm.namespace,
 		pod:                      pm.name,
 		container:                VoidValue,
-		label:                    nm.nodeLabels[cp.displayNodeLabel],
 		cpuCapacity:              pm.cpu.capacityString(),
 		cpuRequests:              pm.cpu.requestActualString(),
 		cpuRequestsPercentage:    pm.cpu.requestPercentageString(),
@@ -278,21 +286,18 @@ func (cp *csvPrinter) printPodLine(nodeName string, nm *nodeMetric, pm *podMetri
 		memoryLimitsPercentage:   pm.memory.limitPercentageString(),
 		memoryUtil:               pm.memory.utilActualString(),
 		memoryUtilPercentage:     pm.memory.utilPercentageString(),
-		allLabels:                allLabels,
+		groupByLabels:            setNodeLabels(cp.uniqueGroupByNodeLabels, nm),
+		displayLabels:            setNodeLabels(cp.uniqueDisplayNodeLabels, nm),
+		remainderLabels:          setNodeLabels(cp.uniqueRemainderNodeLabels, nm),
 	})
 }
 
 func (cp *csvPrinter) printContainerLine(nodeName string, nm *nodeMetric, pm *podMetric, cm *containerMetric) {
-	allLabels := []string{}
-	for _, label := range cp.uniqueNodeLabels {
-		allLabels = append(allLabels, nm.nodeLabels[label])
-	}
 	cp.printLine(&csvLine{
 		node:                     nodeName,
 		namespace:                pm.namespace,
 		pod:                      pm.name,
 		container:                cm.name,
-		label:                    nm.nodeLabels[cp.displayNodeLabel],
 		cpuCapacity:              cm.cpu.capacityString(),
 		cpuRequests:              cm.cpu.requestActualString(),
 		cpuRequestsPercentage:    cm.cpu.requestPercentageString(),
@@ -307,6 +312,8 @@ func (cp *csvPrinter) printContainerLine(nodeName string, nm *nodeMetric, pm *po
 		memoryLimitsPercentage:   cm.memory.limitPercentageString(),
 		memoryUtil:               cm.memory.utilActualString(),
 		memoryUtilPercentage:     cm.memory.utilPercentageString(),
-		allLabels:                allLabels,
+		groupByLabels:            setNodeLabels(cp.uniqueGroupByNodeLabels, nm),
+		displayLabels:            setNodeLabels(cp.uniqueDisplayNodeLabels, nm),
+		remainderLabels:          setNodeLabels(cp.uniqueRemainderNodeLabels, nm),
 	})
 }

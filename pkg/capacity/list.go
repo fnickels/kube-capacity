@@ -17,6 +17,7 @@ package capacity
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"sigs.k8s.io/yaml"
 )
@@ -65,23 +66,34 @@ type listClusterTotals struct {
 }
 
 type listPrinter struct {
-	cm                *clusterMetric
-	showPods          bool
-	showContainers    bool
-	showUtil          bool
-	showPodCount      bool
-	showAllNodeLabels bool
-	displayNodeLabel  string
-	sortBy            string
+	cm                      *clusterMetric
+	showPods                bool
+	showContainers          bool
+	showUtil                bool
+	showPodCount            bool
+	showAllNodeLabels       bool
+	displayNodeLabels       string
+	sortBy                  string
+	uniqueDisplayNodeLabels []string
 }
 
 func (lp listPrinter) Print(outputType string) {
+
+	var err error
+
+	lp.uniqueDisplayNodeLabels, err = processDisplayNodeLabelSelectionOnly(lp.cm, lp.displayNodeLabels)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
 	listOutput := lp.buildListClusterMetrics()
 
 	jsonRaw, err := json.MarshalIndent(listOutput, "", "  ")
 	if err != nil {
-		fmt.Println("Error Marshalling JSON")
-		fmt.Println(err)
+		fmt.Fprintf(os.Stderr, "Error Marshalling JSON: %v\n", err)
+		os.Exit(1)
 	} else {
 		if outputType == JSONOutput {
 			fmt.Printf("%s", jsonRaw)
@@ -91,8 +103,8 @@ func (lp listPrinter) Print(outputType string) {
 			// this just allows us to follow the same code path.
 			yamlRaw, err := yaml.JSONToYAML(jsonRaw)
 			if err != nil {
-				fmt.Println("Error Converting JSON to Yaml")
-				fmt.Println(err)
+				fmt.Fprintf(os.Stderr, "Error Converting JSON to Yaml: %v\n", err)
+				os.Exit(1)
 			} else {
 				fmt.Printf("%s", yamlRaw)
 			}
@@ -118,10 +130,14 @@ func (lp *listPrinter) buildListClusterMetrics() listClusterMetrics {
 		node.CPU = lp.buildListResourceOutput(nodeMetric.cpu)
 		node.Memory = lp.buildListResourceOutput(nodeMetric.memory)
 
+		// Node Labels
 		if lp.showAllNodeLabels {
 			node.NodeLabels = nodeMetric.nodeLabels
-		} else if lp.displayNodeLabel != "" {
-			node.NodeLabels = map[string]string{lp.displayNodeLabel: nodeMetric.nodeLabels[lp.displayNodeLabel]}
+		} else if lp.displayNodeLabels != "" {
+			var mapOfNodeLabels map[string]string
+			for _, label := range lp.uniqueDisplayNodeLabels {
+				mapOfNodeLabels[label] = nodeMetric.nodeLabels[label]
+			}
 		}
 
 		if lp.showPodCount {

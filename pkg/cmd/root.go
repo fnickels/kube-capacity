@@ -26,7 +26,8 @@ var showContainers bool
 var showPods bool
 var showUtil bool
 var showPodCount bool
-var displayNodeLabel string
+var displayNodeLabels string
+var groupByNodeLabels string
 var showAllNodeLabels bool
 var podLabels string
 var nodeLabels string
@@ -44,17 +45,18 @@ var rootCmd = &cobra.Command{
 	Long:  "kube-capacity provides an overview of the resource requests, limits, and utilization in a Kubernetes cluster.",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := cmd.ParseFlags(args); err != nil {
-			fmt.Printf("Error parsing flags: %v", err)
+			fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+			os.Exit(1)
 		}
 
 		if err := validateOutputType(outputFormat); err != nil {
-			fmt.Println(err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
 
 		capacity.FetchAndPrint(
 			showContainers, showPods, showUtil, showPodCount, showAllNodeLabels,
-			availableFormat, podLabels, nodeLabels, displayNodeLabel,
+			availableFormat, podLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
 			namespaceLabels, namespace, kubeContext, kubeConfig, outputFormat, sortBy)
 	},
 }
@@ -72,10 +74,12 @@ func init() {
 		"available", "a", false, "includes quantity available instead of percentage used (ignored with csv or tsv output types)")
 	rootCmd.PersistentFlags().StringVarP(&podLabels,
 		"pod-labels", "l", "", "labels to filter pods with")
-	rootCmd.PersistentFlags().StringVarP(&displayNodeLabel,
-		"display-node-label", "", "", "node label to display")
+	rootCmd.PersistentFlags().StringVarP(&displayNodeLabels,
+		"display-node-label", "", "", "comma separated list of node label(s) to display")
+	rootCmd.PersistentFlags().StringVarP(&groupByNodeLabels,
+		"group-by-node-labels", "", "", "comma separated list of node label(s) to group by")
 	rootCmd.PersistentFlags().BoolVarP(&showAllNodeLabels,
-		"show-all-labels", "", false, "show all node label")
+		"show-all-labels", "", false, "show all node labels")
 	rootCmd.PersistentFlags().StringVarP(&nodeLabels,
 		"node-labels", "", "", "labels to filter nodes with")
 	rootCmd.PersistentFlags().StringVarP(&namespaceLabels,
@@ -98,7 +102,7 @@ func init() {
 // Execute is the primary entrypoint for this CLI
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
