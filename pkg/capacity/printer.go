@@ -59,8 +59,8 @@ func printList(cm *clusterMetric,
 			showPodCount:      showPodCount,
 			showAllNodeLabels: showAllNodeLabels,
 			displayNodeLabels: displayNodeLabels,
-			// groupByNodeLabels: groupByNodeLabels, // grouping is not applicable to json and yaml
-			sortBy: sortBy,
+			groupByNodeLabels: groupByNodeLabels,
+			sortBy:            sortBy,
 		}
 		lp.Print(output)
 	} else if output == TableOutput {

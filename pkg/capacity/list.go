@@ -73,7 +73,9 @@ type listPrinter struct {
 	showPodCount            bool
 	showAllNodeLabels       bool
 	displayNodeLabels       string
+	groupByNodeLabels       string
 	sortBy                  string
+	uniqueGroupByNodeLabels []string
 	uniqueDisplayNodeLabels []string
 }
 
@@ -81,7 +83,11 @@ func (lp listPrinter) Print(outputType string) {
 
 	var err error
 
-	lp.uniqueDisplayNodeLabels, err = processDisplayNodeLabelSelectionOnly(lp.cm, lp.displayNodeLabels)
+	// process Node Label selection elements
+	lp.uniqueGroupByNodeLabels,
+		lp.uniqueDisplayNodeLabels,
+		_,
+		err = processNodeLabelSelections(lp.cm, lp.groupByNodeLabels, lp.displayNodeLabels, false)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -124,7 +130,7 @@ func (lp *listPrinter) buildListClusterMetrics() listClusterMetrics {
 		response.ClusterTotals.PodCount = lp.cm.podCount.podCountString()
 	}
 
-	for _, nodeMetric := range lp.cm.getSortedNodeMetrics(lp.sortBy) {
+	for _, nodeMetric := range lp.cm.getSortedNodeMetrics(lp.uniqueGroupByNodeLabels, lp.sortBy) {
 		var node listNodeMetric
 		node.Name = nodeMetric.name
 		node.CPU = lp.buildListResourceOutput(nodeMetric.cpu)
@@ -133,11 +139,12 @@ func (lp *listPrinter) buildListClusterMetrics() listClusterMetrics {
 		// Node Labels
 		if lp.showAllNodeLabels {
 			node.NodeLabels = nodeMetric.nodeLabels
-		} else if lp.displayNodeLabels != "" {
+		} else {
 			var mapOfNodeLabels map[string]string
-			for _, label := range lp.uniqueDisplayNodeLabels {
+			for _, label := range append(lp.uniqueGroupByNodeLabels, lp.uniqueDisplayNodeLabels...) {
 				mapOfNodeLabels[label] = nodeMetric.nodeLabels[label]
 			}
+			node.NodeLabels = mapOfNodeLabels
 		}
 
 		if lp.showPodCount {

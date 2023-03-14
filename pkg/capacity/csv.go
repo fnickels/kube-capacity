@@ -96,8 +96,6 @@ func (cp *csvPrinter) Print(outputType string) {
 	cp.file = os.Stdout
 	cp.separator = outputType
 
-	sortedNodeMetrics := cp.cm.getSortedNodeMetrics(cp.sortBy)
-
 	var err error
 
 	// process Node Label selection elements
@@ -115,6 +113,9 @@ func (cp *csvPrinter) Print(outputType string) {
 	csvHeaderStrings.groupByLabels = cp.uniqueGroupByNodeLabels
 	csvHeaderStrings.displayLabels = cp.uniqueDisplayNodeLabels
 	csvHeaderStrings.remainderLabels = cp.uniqueRemainderNodeLabels
+
+	// sort first by Group By, then sort criteria
+	sortedNodeMetrics := cp.cm.getSortedNodeMetrics(cp.uniqueGroupByNodeLabels, cp.sortBy)
 
 	cp.printLine(&csvHeaderStrings)
 

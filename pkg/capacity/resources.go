@@ -257,7 +257,8 @@ func (cm *clusterMetric) getUniqueNodeLabels() []string {
 	return result
 }
 
-func (cm *clusterMetric) getSortedNodeMetrics(sortBy string) []*nodeMetric {
+func (cm *clusterMetric) getSortedNodeMetrics(groupByLabels []string, sortBy string) []*nodeMetric {
+
 	sortedNodeMetrics := make([]*nodeMetric, len(cm.nodeMetrics))
 
 	i := 0
@@ -269,6 +270,14 @@ func (cm *clusterMetric) getSortedNodeMetrics(sortBy string) []*nodeMetric {
 	sort.Slice(sortedNodeMetrics, func(i, j int) bool {
 		m1 := sortedNodeMetrics[i]
 		m2 := sortedNodeMetrics[j]
+
+		// sort by grouping labels first (if any are specified)
+		for _, label := range groupByLabels {
+			if m1.nodeLabels[label] != m2.nodeLabels[label] {
+				return m1.nodeLabels[label] < m2.nodeLabels[label]
+			}
+		}
+		// if all labels match or if none are defined, sort by specified value
 
 		switch sortBy {
 		case "cpu.util":

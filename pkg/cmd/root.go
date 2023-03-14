@@ -75,7 +75,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&podLabels,
 		"pod-labels", "l", "", "labels to filter pods with")
 	rootCmd.PersistentFlags().StringVarP(&displayNodeLabels,
-		"display-node-label", "", "", "comma separated list of node label(s) to display")
+		"display-node-labels", "", "", "comma separated list of node label(s) to display")
 	rootCmd.PersistentFlags().StringVarP(&groupByNodeLabels,
 		"group-by-node-labels", "", "", "comma separated list of node label(s) to group by")
 	rootCmd.PersistentFlags().BoolVarP(&showAllNodeLabels,

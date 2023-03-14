@@ -75,7 +75,6 @@ var tableHeaderStrings = tableLine{
 
 func (tp *tablePrinter) Print() {
 	tp.w.Init(os.Stdout, 0, 8, 2, ' ', 0)
-	sortedNodeMetrics := tp.cm.getSortedNodeMetrics(tp.sortBy)
 
 	var err error
 
@@ -94,6 +93,9 @@ func (tp *tablePrinter) Print() {
 	tableHeaderStrings.groupByLabels = tp.uniqueGroupByNodeLabels
 	tableHeaderStrings.displayLabels = tp.uniqueDisplayNodeLabels
 	tableHeaderStrings.remainderLabels = tp.uniqueRemainderNodeLabels
+
+	// sort first by Group By, then sort criteria
+	sortedNodeMetrics := tp.cm.getSortedNodeMetrics(tp.uniqueGroupByNodeLabels, tp.sortBy)
 
 	tp.printLine(&tableHeaderStrings)
 

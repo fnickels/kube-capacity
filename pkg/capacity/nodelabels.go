@@ -95,36 +95,3 @@ func processNodeLabelSelections(cm *clusterMetric, groupBy, display string, show
 
 	return groupByLabels, displayLabels, remainderLabels, nil
 }
-
-func processDisplayNodeLabelSelectionOnly(cm *clusterMetric, display string) ([]string, error) {
-	// if nothing is called for exit
-	if display == "" {
-		return []string{}, nil
-	}
-
-	badLabels := []string{}
-	displayLabels := []string{}
-
-	uniqueNodeLabels := cm.getUniqueNodeLabels()
-
-	unknownLabels := false
-	for _, label := range strings.Split(display, ",") {
-		found := false
-		for _, existingLabel := range uniqueNodeLabels {
-			if label == existingLabel {
-				displayLabels = append(displayLabels, label)
-				found = true
-				break
-			}
-		}
-		if !found {
-			badLabels = append(badLabels, label)
-			unknownLabels = true
-		}
-	}
-	if unknownLabels {
-		return []string{}, fmt.Errorf("unknown (display) node label(s): %v", badLabels)
-	}
-
-	return displayLabels, nil
-}
