@@ -25,13 +25,14 @@ import (
 	"github.com/robscott/kube-capacity/pkg/kube"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	resourcehelper "k8s.io/kubectl/pkg/util/resource"
 	v1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
 
 // FetchAndPrint gathers cluster resource data and outputs it
 func FetchAndPrint(
 	showContainers, showPods, showUtil, showPodCount, showAllNodeLabels,
-	availableFormat bool,
+	availableFormat, binpackAnalysis, showPodSummary bool,
 	podLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
 	namespaceLabels, namespace,
 	kubeContext, kubeConfig, output, sortBy string) {
@@ -46,7 +47,8 @@ func FetchAndPrint(
 	var pmList *v1beta1.PodMetricsList
 	var nmList *v1beta1.NodeMetricsList
 
-	if showUtil {
+	// grab utilization data if either flag is set
+	if showUtil || binpackAnalysis {
 		mClientset, err := kube.NewMetricsClientSet(kubeContext, kubeConfig)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error connecting to Metrics API: %v\n", err)
@@ -59,13 +61,47 @@ func FetchAndPrint(
 		}
 	}
 
+	fmt.Fprintf(os.Stderr, "-------------------\n")
+	for i, pod := range podList.Items {
+		fmt.Fprintf(os.Stderr, "pod %d: %v\n", i, pod.GetName())
+		fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetNamespace())
+		fmt.Fprintf(os.Stderr, "      : %v\n", pod.Status.Phase)
+		fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetLabels())
+		fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetCreationTimestamp())
+		fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetAnnotations())
+		req, limit := resourcehelper.PodRequestsAndLimits(&pod)
+		fmt.Fprintf(os.Stderr, "      : %v\n", req)
+		fmt.Fprintf(os.Stderr, "      : %v\n", limit)
+
+		if i > 10 {
+			break
+		}
+	}
+	fmt.Fprintf(os.Stderr, "-------------------\n")
+
+	if pmList != nil {
+		fmt.Fprintf(os.Stderr, "===================\n")
+		for i, pod := range pmList.Items {
+			fmt.Fprintf(os.Stderr, "pod %d: %v\n", i, pod.GetName())
+			fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetNamespace())
+			fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetLabels())
+			fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetCreationTimestamp())
+
+			if i > 5 {
+				break
+			}
+		}
+		fmt.Fprintf(os.Stderr, "===================\n")
+	}
+
 	cm := buildClusterMetric(podList, pmList, nodeList, nmList)
+
 	showNamespace := namespace == ""
 
 	printList(&cm,
 		showContainers, showPods, showUtil, showPodCount, showNamespace, showAllNodeLabels,
 		displayNodeLabels, groupByNodeLabels,
-		output, sortBy, availableFormat)
+		output, sortBy, availableFormat, binpackAnalysis, showPodSummary)
 }
 
 func getPodsAndNodes(clientset kubernetes.Interface, podLabels, nodeLabels, namespaceLabels, namespace string) (*corev1.PodList, *corev1.NodeList) {

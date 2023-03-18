@@ -34,6 +34,7 @@ type csvPrinter struct {
 	sortBy                    string
 	file                      io.Writer
 	separator                 string
+	binpackAnalysis           bool
 	uniqueGroupByNodeLabels   []string
 	uniqueDisplayNodeLabels   []string
 	uniqueRemainderNodeLabels []string
@@ -63,6 +64,7 @@ type csvLine struct {
 	groupByLabels            []string
 	displayLabels            []string
 	remainderLabels          []string
+	binpack                  binAnalysis
 }
 
 var csvHeaderStrings = csvLine{
@@ -89,6 +91,7 @@ var csvHeaderStrings = csvLine{
 	groupByLabels:            []string{},
 	displayLabels:            []string{},
 	remainderLabels:          []string{},
+	binpack:                  binHeaders,
 }
 
 func (cp *csvPrinter) Print(outputType string) {
@@ -203,6 +206,16 @@ func (cp *csvPrinter) getLineItems(cl *csvLine) []string {
 		lineItems = append(lineItems, cl.podCountAllocatable)
 	}
 
+	if cp.binpackAnalysis {
+		lineItems = append(lineItems, cl.binpack.idleHeadroom)
+		lineItems = append(lineItems, cl.binpack.idleWasteCPU)
+		lineItems = append(lineItems, cl.binpack.idleWasteMEM)
+		lineItems = append(lineItems, cl.binpack.idleWastePODS)
+		lineItems = append(lineItems, cl.binpack.binpackRequestRatio)
+		lineItems = append(lineItems, cl.binpack.binpackLimitRatio)
+		lineItems = append(lineItems, cl.binpack.binpackUtilizationRatio)
+	}
+
 	// if any remaining Node Labels have been specified to be displayed add them here
 	for _, x := range cl.remainderLabels {
 		lineItems = append(lineItems, CSVStringTerminator+x+CSVStringTerminator)
@@ -236,6 +249,7 @@ func (cp *csvPrinter) printClusterLine() {
 		groupByLabels:            setMultipleVoids(len(cp.uniqueGroupByNodeLabels)),
 		displayLabels:            setMultipleVoids(len(cp.uniqueDisplayNodeLabels)),
 		remainderLabels:          setMultipleVoids(len(cp.uniqueRemainderNodeLabels)),
+		binpack:                  cp.cm.getBinAnalysis(),
 	})
 }
 
@@ -264,6 +278,7 @@ func (cp *csvPrinter) printNodeLine(nodeName string, nm *nodeMetric) {
 		groupByLabels:            setNodeLabels(cp.uniqueGroupByNodeLabels, nm),
 		displayLabels:            setNodeLabels(cp.uniqueDisplayNodeLabels, nm),
 		remainderLabels:          setNodeLabels(cp.uniqueRemainderNodeLabels, nm),
+		binpack:                  nm.getBinAnalysis(),
 	})
 }
 
@@ -290,6 +305,7 @@ func (cp *csvPrinter) printPodLine(nodeName string, nm *nodeMetric, pm *podMetri
 		groupByLabels:            setNodeLabels(cp.uniqueGroupByNodeLabels, nm),
 		displayLabels:            setNodeLabels(cp.uniqueDisplayNodeLabels, nm),
 		remainderLabels:          setNodeLabels(cp.uniqueRemainderNodeLabels, nm),
+		binpack:                  pm.getBinAnalysis(),
 	})
 }
 
@@ -316,5 +332,6 @@ func (cp *csvPrinter) printContainerLine(nodeName string, nm *nodeMetric, pm *po
 		groupByLabels:            setNodeLabels(cp.uniqueGroupByNodeLabels, nm),
 		displayLabels:            setNodeLabels(cp.uniqueDisplayNodeLabels, nm),
 		remainderLabels:          setNodeLabels(cp.uniqueRemainderNodeLabels, nm),
+		binpack:                  cm.getBinAnalysis(),
 	})
 }

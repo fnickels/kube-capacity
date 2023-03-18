@@ -23,20 +23,22 @@ import (
 )
 
 type listNodeMetric struct {
-	Name       string              `json:"name"`
-	CPU        *listResourceOutput `json:"cpu,omitempty"`
-	Memory     *listResourceOutput `json:"memory,omitempty"`
-	Pods       []*listPod          `json:"pods,omitempty"`
-	PodCount   string              `json:"podCount,omitempty"`
-	NodeLabels map[string]string   `json:"nodelabels,omitempty"`
+	Name            string              `json:"name"`
+	CPU             *listResourceOutput `json:"cpu,omitempty"`
+	Memory          *listResourceOutput `json:"memory,omitempty"`
+	Pods            []*listPod          `json:"pods,omitempty"`
+	PodCount        string              `json:"podCount,omitempty"`
+	NodeLabels      map[string]string   `json:"nodelabels,omitempty"`
+	binpackAnalysis binAnalysis         `json:"binpackAnalysis,omitempty"`
 }
 
 type listPod struct {
-	Name       string              `json:"name"`
-	Namespace  string              `json:"namespace"`
-	CPU        *listResourceOutput `json:"cpu"`
-	Memory     *listResourceOutput `json:"memory"`
-	Containers []listContainer     `json:"containers,omitempty"`
+	Name            string              `json:"name"`
+	Namespace       string              `json:"namespace"`
+	CPU             *listResourceOutput `json:"cpu"`
+	Memory          *listResourceOutput `json:"memory"`
+	Containers      []listContainer     `json:"containers,omitempty"`
+	binpackAnalysis binAnalysis         `json:"binpackAnalysis,omitempty"`
 }
 
 type listContainer struct {
@@ -60,9 +62,10 @@ type listClusterMetrics struct {
 }
 
 type listClusterTotals struct {
-	CPU      *listResourceOutput `json:"cpu"`
-	Memory   *listResourceOutput `json:"memory"`
-	PodCount string              `json:"podCount,omitempty"`
+	CPU             *listResourceOutput `json:"cpu"`
+	Memory          *listResourceOutput `json:"memory"`
+	PodCount        string              `json:"podCount,omitempty"`
+	binpackAnalysis binAnalysis         `json:"binpackAnalysis,omitempty"`
 }
 
 type listPrinter struct {
@@ -75,6 +78,7 @@ type listPrinter struct {
 	displayNodeLabels       string
 	groupByNodeLabels       string
 	sortBy                  string
+	binpackAnalysis         bool
 	uniqueGroupByNodeLabels []string
 	uniqueDisplayNodeLabels []string
 }
@@ -102,7 +106,7 @@ func (lp listPrinter) Print(outputType string) {
 		os.Exit(1)
 	} else {
 		if outputType == JSONOutput {
-			fmt.Printf("%s", jsonRaw)
+			fmt.Fprintf(os.Stdout, "%s", jsonRaw)
 		} else {
 			// This is a strange approach, but the k8s YAML package
 			// already marshalls to JSON before converting to YAML,
@@ -112,7 +116,7 @@ func (lp listPrinter) Print(outputType string) {
 				fmt.Fprintf(os.Stderr, "Error Converting JSON to Yaml: %v\n", err)
 				os.Exit(1)
 			} else {
-				fmt.Printf("%s", yamlRaw)
+				fmt.Fprintf(os.Stdout, "%s", yamlRaw)
 			}
 		}
 	}
@@ -130,6 +134,10 @@ func (lp *listPrinter) buildListClusterMetrics() listClusterMetrics {
 		response.ClusterTotals.PodCount = lp.cm.podCount.podCountString()
 	}
 
+	if lp.binpackAnalysis {
+		response.ClusterTotals.binpackAnalysis = lp.cm.getBinAnalysis()
+	}
+
 	for _, nodeMetric := range lp.cm.getSortedNodeMetrics(lp.uniqueGroupByNodeLabels, lp.sortBy) {
 		var node listNodeMetric
 		node.Name = nodeMetric.name
@@ -140,7 +148,7 @@ func (lp *listPrinter) buildListClusterMetrics() listClusterMetrics {
 		if lp.showAllNodeLabels {
 			node.NodeLabels = nodeMetric.nodeLabels
 		} else {
-			var mapOfNodeLabels map[string]string
+			mapOfNodeLabels := map[string]string{}
 			for _, label := range append(lp.uniqueGroupByNodeLabels, lp.uniqueDisplayNodeLabels...) {
 				mapOfNodeLabels[label] = nodeMetric.nodeLabels[label]
 			}
@@ -151,6 +159,10 @@ func (lp *listPrinter) buildListClusterMetrics() listClusterMetrics {
 			node.PodCount = nodeMetric.podCount.podCountString()
 		}
 
+		if lp.binpackAnalysis {
+			node.binpackAnalysis = nodeMetric.getBinAnalysis()
+		}
+
 		if lp.showPods || lp.showContainers {
 			for _, podMetric := range nodeMetric.getSortedPodMetrics(lp.sortBy) {
 				var pod listPod
@@ -158,6 +170,10 @@ func (lp *listPrinter) buildListClusterMetrics() listClusterMetrics {
 				pod.Namespace = podMetric.namespace
 				pod.CPU = lp.buildListResourceOutput(podMetric.cpu)
 				pod.Memory = lp.buildListResourceOutput(podMetric.memory)
+
+				if lp.binpackAnalysis {
+					pod.binpackAnalysis = podMetric.getBinAnalysis()
+				}
 
 				if lp.showContainers {
 					for _, containerMetric := range podMetric.getSortedContainerMetrics(lp.sortBy) {
@@ -179,7 +195,7 @@ func (lp *listPrinter) buildListClusterMetrics() listClusterMetrics {
 
 func (lp *listPrinter) buildListResourceOutput(item *resourceMetric) *listResourceOutput {
 	valueCalculator := item.valueFunction()
-	percentCalculator := item.percentFunction()
+	percentCalculator := item.percentFunctionWithoutDoubleEscape()
 
 	out := listResourceOutput{
 		Requests:    valueCalculator(item.request),

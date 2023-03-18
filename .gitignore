@@ -6,6 +6,7 @@
 *.dylib
 main
 dist
+kube-capacity
 
 # Test binary, built with `go test -c`
 *.test

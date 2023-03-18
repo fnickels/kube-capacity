@@ -48,7 +48,7 @@ func printList(cm *clusterMetric,
 	showContainers, showPods, showUtil, showPodCount, showNamespace, showAllNodeLabels bool,
 	displayNodeLabels, groupByNodeLabels,
 	output, sortBy string,
-	availableFormat bool) {
+	availableFormat, binpackAnalysis, showPodSummary bool) {
 
 	if output == JSONOutput || output == YAMLOutput {
 		lp := &listPrinter{
@@ -61,24 +61,44 @@ func printList(cm *clusterMetric,
 			displayNodeLabels: displayNodeLabels,
 			groupByNodeLabels: groupByNodeLabels,
 			sortBy:            sortBy,
+			binpackAnalysis:   binpackAnalysis,
 		}
 		lp.Print(output)
 	} else if output == TableOutput {
-		tp := &tablePrinter{
-			cm:                cm,
-			showPods:          showPods,
-			showUtil:          showUtil,
-			showPodCount:      showPodCount,
-			showContainers:    showContainers,
-			showNamespace:     showNamespace,
-			showAllNodeLabels: showAllNodeLabels,
-			displayNodeLabels: displayNodeLabels,
-			groupByNodeLabels: groupByNodeLabels,
-			sortBy:            sortBy,
-			w:                 new(tabwriter.Writer),
-			availableFormat:   availableFormat,
+		if showPodSummary {
+			pp := &tablePodPrinter{
+				cm:                cm,
+				showUtil:          showUtil,
+				showPodCount:      showPodCount,
+				showContainers:    showContainers,
+				showNamespace:     showNamespace,
+				showAllNodeLabels: showAllNodeLabels,
+				displayNodeLabels: displayNodeLabels,
+				groupByNodeLabels: groupByNodeLabels,
+				sortBy:            sortBy,
+				w:                 new(tabwriter.Writer),
+				availableFormat:   availableFormat,
+				binpackAnalysis:   binpackAnalysis,
+			}
+			pp.Print()
+		} else {
+			tp := &tablePrinter{
+				cm:                cm,
+				showPods:          showPods,
+				showUtil:          showUtil,
+				showPodCount:      showPodCount,
+				showContainers:    showContainers,
+				showNamespace:     showNamespace,
+				showAllNodeLabels: showAllNodeLabels,
+				displayNodeLabels: displayNodeLabels,
+				groupByNodeLabels: groupByNodeLabels,
+				sortBy:            sortBy,
+				w:                 new(tabwriter.Writer),
+				availableFormat:   availableFormat,
+				binpackAnalysis:   binpackAnalysis,
+			}
+			tp.Print()
 		}
-		tp.Print()
 	} else if output == CSVOutput || output == TSVOutput {
 		cp := &csvPrinter{
 			cm:                cm,
@@ -91,6 +111,7 @@ func printList(cm *clusterMetric,
 			displayNodeLabels: displayNodeLabels,
 			groupByNodeLabels: groupByNodeLabels,
 			sortBy:            sortBy,
+			binpackAnalysis:   binpackAnalysis,
 		}
 		cp.Print(output)
 	} else {

@@ -57,6 +57,8 @@ type clusterMetric struct {
 	memory      *resourceMetric
 	nodeMetrics map[string]*nodeMetric
 	podCount    *podCount
+	rawPodList  *corev1.PodList
+	rawPmList   *v1beta1.PodMetricsList
 }
 
 type nodeMetric struct {
@@ -74,6 +76,20 @@ type podMetric struct {
 	cpu              *resourceMetric
 	memory           *resourceMetric
 	containerMetrics map[string]*containerMetric
+}
+
+type resourceSummary struct {
+	resourceType   string
+	utilizationMin resource.Quantity
+	utilizationMax resource.Quantity
+	utilizationSum resource.Quantity
+	requestMin     resource.Quantity
+	requestMax     resource.Quantity
+	requestSum     resource.Quantity
+	limitMin       resource.Quantity
+	limitMax       resource.Quantity
+	limitSum       resource.Quantity
+	count          int
 }
 
 type containerMetric struct {
@@ -94,6 +110,9 @@ func buildClusterMetric(podList *corev1.PodList, pmList *v1beta1.PodMetricsList,
 		memory:      &resourceMetric{resourceType: "memory"},
 		nodeMetrics: map[string]*nodeMetric{},
 		podCount:    &podCount{},
+		// add these for pod summary feature
+		rawPodList: podList,
+		rawPmList:  pmList,
 	}
 
 	var totalPodAllocatable int64
@@ -391,6 +410,18 @@ func (pm *podMetric) getSortedContainerMetrics(sortBy string) []*containerMetric
 			return m2.memory.limit.Value() < m1.memory.limit.Value()
 		case "mem.request":
 			return m2.memory.request.Value() < m1.memory.request.Value()
+		case "cpu.util.percentage":
+			return m2.cpu.percent(m2.cpu.utilization) < m1.cpu.percent(m1.cpu.utilization)
+		case "cpu.limit.percentage":
+			return m2.cpu.percent(m2.cpu.limit) < m1.cpu.percent(m1.cpu.limit)
+		case "cpu.request.percentage":
+			return m2.cpu.percent(m2.cpu.request) < m1.cpu.percent(m1.cpu.request)
+		case "mem.util.percentage":
+			return m2.memory.percent(m2.memory.utilization) < m1.memory.percent(m1.memory.utilization)
+		case "mem.limit.percentage":
+			return m2.memory.percent(m2.memory.limit) < m1.memory.percent(m1.memory.limit)
+		case "mem.request.percentage":
+			return m2.memory.percent(m2.memory.request) < m1.memory.percent(m1.memory.request)
 		default:
 			return m1.name < m2.name
 		}
@@ -400,60 +431,33 @@ func (pm *podMetric) getSortedContainerMetrics(sortBy string) []*containerMetric
 }
 
 func (rm *resourceMetric) requestString(availableFormat bool) string {
-	return resourceString(rm.resourceType, rm.request, rm.allocatable, availableFormat)
+	return rm.resourceString(rm.request, availableFormat)
 }
 
 func (rm *resourceMetric) limitString(availableFormat bool) string {
-	return resourceString(rm.resourceType, rm.limit, rm.allocatable, availableFormat)
+	return rm.resourceString(rm.limit, availableFormat)
 }
 
 func (rm *resourceMetric) utilString(availableFormat bool) string {
-	return resourceString(rm.resourceType, rm.utilization, rm.allocatable, availableFormat)
+	return rm.resourceString(rm.utilization, availableFormat)
 }
 
 // podCountString returns the string representation of podCount struct, example: "15/110 (12%)"
 func (pc *podCount) podCountString() string {
-	return fmt.Sprintf("%d/%d (%d%%%%)", pc.current, pc.allocatable, int64(100.0*float64(pc.current)/float64(pc.allocatable)))
+	return fmt.Sprintf("%d/%d (%d%%%%)", pc.current, pc.allocatable,
+		percentRawFunction(float64(pc.current), float64(pc.allocatable)))
 }
 
-func resourceString(resourceType string, actual, allocatable resource.Quantity, availableFormat bool) string {
-	utilPercent := float64(0)
-	if allocatable.MilliValue() > 0 {
-		utilPercent = float64(actual.MilliValue()) / float64(allocatable.MilliValue()) * 100
-	}
-
-	var actualStr, allocatableStr string
-
+func (rm *resourceMetric) resourceString(r resource.Quantity, availableFormat bool) string {
 	if availableFormat {
-		switch resourceType {
-		case "cpu":
-			actualStr = fmt.Sprintf("%dm", allocatable.MilliValue()-actual.MilliValue())
-			allocatableStr = fmt.Sprintf("%dm", allocatable.MilliValue())
-		case "memory":
-			actualStr = fmt.Sprintf("%dMi", formatToMegiBytes(allocatable)-formatToMegiBytes(actual))
-			allocatableStr = fmt.Sprintf("%dMi", formatToMegiBytes(allocatable))
-		default:
-			actualStr = fmt.Sprintf("%d", allocatable.Value()-actual.Value())
-			allocatableStr = fmt.Sprintf("%d", allocatable.Value())
-		}
-
-		return fmt.Sprintf("%s/%s", actualStr, allocatableStr)
+		return fmt.Sprintf("%s/%s", rm.valueAvailableFunction()(r), rm.valueFunction()(rm.allocatable))
 	}
-
-	switch resourceType {
-	case "cpu":
-		actualStr = fmt.Sprintf("%dm", actual.MilliValue())
-	case "memory":
-		actualStr = fmt.Sprintf("%dMi", formatToMegiBytes(actual))
-	default:
-		actualStr = fmt.Sprintf("%d", actual.Value())
-	}
-
-	return fmt.Sprintf("%s (%d%%%%)", actualStr, int64(utilPercent))
+	return fmt.Sprintf("%s (%v)", rm.valueFunction()(r), rm.percentFunction()(r))
 }
 
 func formatToMegiBytes(actual resource.Quantity) int64 {
 	value := actual.Value() / Mebibyte
+	// rounding up
 	if actual.Value()%Mebibyte != 0 {
 		value++
 	}
@@ -475,8 +479,43 @@ func (rm resourceMetric) valueFunction() (f func(r resource.Quantity) string) {
 	return f
 }
 
+func (rm resourceMetric) valueAvailableFunction() (f func(r resource.Quantity) string) {
+	switch rm.resourceType {
+	case "cpu":
+		f = func(r resource.Quantity) string {
+			return fmt.Sprintf("%dm", rm.allocatable.MilliValue()-r.MilliValue())
+		}
+	case "memory":
+		f = func(r resource.Quantity) string {
+			return fmt.Sprintf("%dMi", formatToMegiBytes(rm.allocatable)-formatToMegiBytes(r))
+		}
+	}
+	return f
+}
+
+func (rm resourceMetric) valueCSVFunction() (f func(r resource.Quantity) string) {
+	switch rm.resourceType {
+	case "cpu":
+		f = func(r resource.Quantity) string {
+			return fmt.Sprintf("%d", r.MilliValue())
+		}
+	case "memory":
+		f = func(r resource.Quantity) string {
+			return fmt.Sprintf("%d", formatToMegiBytes(r))
+		}
+	}
+	return f
+}
+
 // NOTE: This might not be a great place for closures due to the cyclical nature of how resourceType works. Perhaps better implemented another way.
 func (rm resourceMetric) percentFunction() (f func(r resource.Quantity) string) {
+	f = func(r resource.Quantity) string {
+		return fmt.Sprintf("%v%%%%", rm.percent(r))
+	}
+	return f
+}
+
+func (rm resourceMetric) percentFunctionWithoutDoubleEscape() (f func(r resource.Quantity) string) {
 	f = func(r resource.Quantity) string {
 		return fmt.Sprintf("%v%%", rm.percent(r))
 	}
@@ -497,19 +536,12 @@ func percentRawFunction(nominator, denominator float64) int64 {
 // For CSV / TSV formatting Helper Functions
 // -----------------------------------------
 
-func resourceCSVString(resourceType string, actual resource.Quantity) string {
-	if resourceType == "memory" {
-		return fmt.Sprintf("%d", formatToMegiBytes(actual))
-	}
-	return fmt.Sprintf("%d", actual.Value())
-}
-
 func (rm *resourceMetric) capacityString() string {
-	return resourceCSVString(rm.resourceType, rm.allocatable)
+	return rm.valueCSVFunction()(rm.allocatable)
 }
 
 func (rm *resourceMetric) requestActualString() string {
-	return resourceCSVString(rm.resourceType, rm.request)
+	return rm.valueCSVFunction()(rm.request)
 }
 
 func (rm *resourceMetric) requestPercentageString() string {
@@ -517,7 +549,7 @@ func (rm *resourceMetric) requestPercentageString() string {
 }
 
 func (rm *resourceMetric) limitActualString() string {
-	return resourceCSVString(rm.resourceType, rm.limit)
+	return rm.valueCSVFunction()(rm.limit)
 }
 
 func (rm *resourceMetric) limitPercentageString() string {
@@ -525,7 +557,7 @@ func (rm *resourceMetric) limitPercentageString() string {
 }
 
 func (rm *resourceMetric) utilActualString() string {
-	return resourceCSVString(rm.resourceType, rm.utilization)
+	return rm.valueCSVFunction()(rm.utilization)
 }
 
 func (rm *resourceMetric) utilPercentageString() string {

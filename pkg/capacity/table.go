@@ -34,6 +34,7 @@ type tablePrinter struct {
 	sortBy                    string
 	w                         *tabwriter.Writer
 	availableFormat           bool
+	binpackAnalysis           bool
 	uniqueGroupByNodeLabels   []string
 	uniqueDisplayNodeLabels   []string
 	uniqueRemainderNodeLabels []string
@@ -54,6 +55,7 @@ type tableLine struct {
 	groupByLabels   []string
 	displayLabels   []string
 	remainderLabels []string
+	binpack         binAnalysis
 }
 
 var tableHeaderStrings = tableLine{
@@ -71,6 +73,7 @@ var tableHeaderStrings = tableLine{
 	groupByLabels:   []string{},
 	displayLabels:   []string{},
 	remainderLabels: []string{},
+	binpack:         binHeaders,
 }
 
 func (tp *tablePrinter) Print() {
@@ -179,6 +182,16 @@ func (tp *tablePrinter) getLineItems(tl *tableLine) []string {
 		lineItems = append(lineItems, tl.podCount)
 	}
 
+	if tp.binpackAnalysis {
+		lineItems = append(lineItems, tl.binpack.idleHeadroom)
+		lineItems = append(lineItems, tl.binpack.idleWasteCPU)
+		lineItems = append(lineItems, tl.binpack.idleWasteMEM)
+		lineItems = append(lineItems, tl.binpack.idleWastePODS)
+		lineItems = append(lineItems, tl.binpack.binpackRequestRatio)
+		lineItems = append(lineItems, tl.binpack.binpackLimitRatio)
+		lineItems = append(lineItems, tl.binpack.binpackUtilizationRatio)
+	}
+
 	// if any remaining Node Labels have been specified to be displayed add them here
 	for _, x := range tl.remainderLabels {
 		lineItems = append(lineItems, x)
@@ -203,6 +216,7 @@ func (tp *tablePrinter) printClusterLine() {
 		groupByLabels:   setMultipleVoids(len(tp.uniqueGroupByNodeLabels)),
 		displayLabels:   setMultipleVoids(len(tp.uniqueDisplayNodeLabels)),
 		remainderLabels: setMultipleVoids(len(tp.uniqueRemainderNodeLabels)),
+		binpack:         tp.cm.getBinAnalysis(),
 	})
 }
 
@@ -222,6 +236,7 @@ func (tp *tablePrinter) printNodeLine(nodeName string, nm *nodeMetric) {
 		groupByLabels:   setNodeLabels(tp.uniqueGroupByNodeLabels, nm),
 		displayLabels:   setNodeLabels(tp.uniqueDisplayNodeLabels, nm),
 		remainderLabels: setNodeLabels(tp.uniqueRemainderNodeLabels, nm),
+		binpack:         nm.getBinAnalysis(),
 	})
 }
 
@@ -240,6 +255,7 @@ func (tp *tablePrinter) printPodLine(nodeName string, nm *nodeMetric, pm *podMet
 		groupByLabels:   setNodeLabels(tp.uniqueGroupByNodeLabels, nm),
 		displayLabels:   setNodeLabels(tp.uniqueDisplayNodeLabels, nm),
 		remainderLabels: setNodeLabels(tp.uniqueRemainderNodeLabels, nm),
+		binpack:         pm.getBinAnalysis(),
 	})
 }
 
@@ -258,5 +274,6 @@ func (tp *tablePrinter) printContainerLine(nodeName string, nm *nodeMetric, pm *
 		groupByLabels:   setNodeLabels(tp.uniqueGroupByNodeLabels, nm),
 		displayLabels:   setNodeLabels(tp.uniqueDisplayNodeLabels, nm),
 		remainderLabels: setNodeLabels(tp.uniqueRemainderNodeLabels, nm),
+		binpack:         cm.getBinAnalysis(),
 	})
 }

@@ -22,22 +22,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var showContainers bool
-var showPods bool
-var showUtil bool
-var showPodCount bool
-var displayNodeLabels string
-var groupByNodeLabels string
-var showAllNodeLabels bool
-var podLabels string
-var nodeLabels string
-var namespaceLabels string
-var namespace string
-var kubeContext string
-var kubeConfig string
-var outputFormat string
-var sortBy string
-var availableFormat bool
+var (
+	showContainers    bool
+	showPods          bool
+	showUtil          bool
+	showPodCount      bool
+	displayNodeLabels string
+	groupByNodeLabels string
+	showAllNodeLabels bool
+	podLabels         string
+	nodeLabels        string
+	namespaceLabels   string
+	namespace         string
+	kubeContext       string
+	kubeConfig        string
+	outputFormat      string
+	sortBy            string
+	availableFormat   bool
+	binpackAnalysis   bool
+	showPodSummary    bool
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "kube-capacity",
@@ -56,7 +60,8 @@ var rootCmd = &cobra.Command{
 
 		capacity.FetchAndPrint(
 			showContainers, showPods, showUtil, showPodCount, showAllNodeLabels,
-			availableFormat, podLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
+			availableFormat, binpackAnalysis, showPodSummary,
+			podLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
 			namespaceLabels, namespace, kubeContext, kubeConfig, outputFormat, sortBy)
 	},
 }
@@ -84,8 +89,10 @@ func init() {
 		"node-labels", "", "", "labels to filter nodes with")
 	rootCmd.PersistentFlags().StringVarP(&namespaceLabels,
 		"namespace-labels", "", "", "labels to filter namespaces with")
-	rootCmd.PersistentFlags().StringVarP(&namespace,
-		"binpack-analysis", "b", "", "add node binpack analysis fields")
+	rootCmd.PersistentFlags().BoolVarP(&binpackAnalysis,
+		"binpack-analysis", "b", false, "add node binpack analysis fields")
+	rootCmd.PersistentFlags().BoolVarP(&showPodSummary,
+		"pod-summary", "", false, "generate alternate report of pods")
 	rootCmd.PersistentFlags().StringVarP(&namespace,
 		"namespace", "n", "", "only include pods from this namespace")
 	rootCmd.PersistentFlags().StringVarP(&kubeContext,
