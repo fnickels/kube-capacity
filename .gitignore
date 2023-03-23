@@ -14,5 +14,10 @@ kube-capacity
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# output of the kube-capacity tool
+*.json
+*.csv
+*.tsv
+
 vendor
 .idea

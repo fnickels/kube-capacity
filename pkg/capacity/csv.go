@@ -29,6 +29,7 @@ type csvPrinter struct {
 	showContainers            bool
 	showNamespace             bool
 	showAllNodeLabels         bool
+	showDebug                 bool
 	displayNodeLabels         string
 	groupByNodeLabels         string
 	sortBy                    string

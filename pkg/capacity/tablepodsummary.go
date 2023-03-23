@@ -1,17 +1,3 @@
-// Copyright 2019 Kube Capacity Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package capacity
 
 import (
@@ -24,13 +10,24 @@ import (
 	resourcehelper "k8s.io/kubectl/pkg/util/resource"
 )
 
+type ContainerClassificationType string
+
+const (
+	NormalContainerClassification    ContainerClassificationType = "normal"
+	InitContainerClassification      ContainerClassificationType = "init"
+	EphemeralContainerClassification ContainerClassificationType = "ephemeral"
+	VoidContainerClassification      ContainerClassificationType = "*"
+)
+
 type tablePodPrinter struct {
 	cm                        *clusterMetric
+	showPods                  bool
 	showUtil                  bool
 	showPodCount              bool
 	showContainers            bool
 	showNamespace             bool
 	showAllNodeLabels         bool
+	showDebug                 bool
 	displayNodeLabels         string
 	groupByNodeLabels         string
 	sortBy                    string
@@ -44,16 +41,20 @@ type tablePodPrinter struct {
 }
 
 type tablePodLine struct {
+	appNameLabel    string
 	namespace       string
 	pod             string
 	container       string
-	containerType   string
+	containerType   ContainerClassificationType
 	cpuRequests     string
 	cpuLimits       string
 	cpuUtil         string
 	memoryRequests  string
 	memoryLimits    string
 	memoryUtil      string
+	eniRequests     string
+	eniLimits       string
+	eniUtil         string
 	podCount        string
 	podLabels       []string
 	groupByLabels   []string
@@ -63,6 +64,7 @@ type tablePodLine struct {
 }
 
 var tablePodHeaderStrings = tablePodLine{
+	appNameLabel:    "APP LABEL",
 	namespace:       "NAMESPACE",
 	pod:             "POD",
 	container:       "CONTAINER",
@@ -73,6 +75,9 @@ var tablePodHeaderStrings = tablePodLine{
 	memoryRequests:  "MEMORY REQUESTS",
 	memoryLimits:    "MEMORY LIMITS",
 	memoryUtil:      "MEMORY UTIL",
+	eniRequests:     "ENI REQUESTS",
+	eniLimits:       "ENI LIMITS",
+	eniUtil:         "ENI UTIL",
 	podCount:        "POD COUNT",
 	podLabels:       []string{},
 	groupByLabels:   []string{},
@@ -87,33 +92,42 @@ func (pp *tablePodPrinter) Print() {
 
 	var err error
 
+	// process Node Label selection elements
+	pp.uniquePodLabels, err = processPodLabelSelections(pp.cm)
+
 	// sort pod list (maybe)
-	sortedPodList := pp.cm.rawPodList.Items
+	sortedPodAppList := pp.cm.rawPodAppList
 
 	pp.printLine(&tablePodHeaderStrings)
 
-	if len(sortedPodList) > 1 {
+	if len(sortedPodAppList) > 1 {
 		pp.printClusterLine()
 	}
 
-	for _, pl := range sortedPodList {
+	for _, pal := range sortedPodAppList {
 
-		pp.printPodLine(pl)
+		pp.printPodAppLine(pal)
 
-		for _, cc := range pl.Spec.InitContainers {
-			pp.printContainerLine(pl, cc, true)
+		if pp.showPods || pp.showContainers {
+			for _, pl := range pal.Items {
+
+				pp.printPodLine(pl)
+
+				if pp.showContainers {
+					for _, cc := range pl.Spec.InitContainers {
+						pp.printContainerLine(pl, cc, InitContainerClassification)
+					}
+
+					for _, cc := range pl.Spec.Containers {
+						pp.printContainerLine(pl, cc, NormalContainerClassification)
+					}
+
+					for _, cc := range pl.Spec.EphemeralContainers {
+						pp.printContainerLine(pl, corev1.Container(cc.EphemeralContainerCommon), EphemeralContainerClassification)
+					}
+				}
+			}
 		}
-
-		for _, cc := range pl.Spec.Containers {
-			pp.printContainerLine(pl, cc, false)
-		}
-
-		//		if pp.showContainers {
-		//			containerMetrics := pm.getSortedContainerMetrics(pp.sortBy)
-		//			for _, containerMetric := range containerMetrics {
-		//				pp.printContainerLine(nm.name, nm, pm, containerMetric)
-		//			}
-		//		}
 	}
 
 	err = pp.w.Flush()
@@ -125,20 +139,31 @@ func (pp *tablePodPrinter) Print() {
 
 func (pp *tablePodPrinter) printLine(tl *tablePodLine) {
 	lineItems := pp.getLineItems(tl)
-	fmt.Fprintf(os.Stdout, "LineItems: %v\n", lineItems)
+	if pp.showDebug {
+		fmt.Fprintf(os.Stdout, "LineItems: %v\n", lineItems)
+	}
 	fmt.Fprintf(pp.w, strings.Join(lineItems[:], "\t ")+"\n")
 }
 
 func (pp *tablePodPrinter) getLineItems(tl *tablePodLine) []string {
 
-	lineItems := []string{
-		tl.namespace,
-		tl.pod,
-		tl.container,
-		tl.containerType,
+	lineItems := []string{tl.appNameLabel}
+
+	if pp.showContainers || pp.showPods {
+		if pp.showNamespace {
+			lineItems = append(lineItems, tl.namespace)
+		}
+		lineItems = append(lineItems, tl.pod)
 	}
 
-	fmt.Fprintf(os.Stdout, "LineItems: %v\n", lineItems)
+	if pp.showContainers {
+		lineItems = append(lineItems, tl.container)
+		lineItems = append(lineItems, string(tl.containerType))
+	}
+
+	if pp.showPodCount {
+		lineItems = append(lineItems, tl.podCount)
+	}
 
 	//
 	//	// add any 'Group By' Node Labels which are specified here
@@ -150,18 +175,7 @@ func (pp *tablePodPrinter) getLineItems(tl *tablePodLine) []string {
 	//	for _, x := range tl.displayLabels {
 	//		lineItems = append(lineItems, x)
 	//	}
-	//
-	//	if pp.showContainers || pp.showPods {
-	//		if pp.showNamespace {
-	//			lineItems = append(lineItems, tl.namespace)
-	//		}
-	//		lineItems = append(lineItems, tl.pod)
-	//	}
-	//
-	//	if pp.showContainers {
-	//		lineItems = append(lineItems, tl.container)
-	//	}
-	//
+
 	//	lineItems = append(lineItems, tl.cpuRequests)
 	//	lineItems = append(lineItems, tl.cpuLimits)
 	//
@@ -174,10 +188,6 @@ func (pp *tablePodPrinter) getLineItems(tl *tablePodLine) []string {
 	//
 	//	if pp.showUtil {
 	//		lineItems = append(lineItems, tl.memoryUtil)
-	//	}
-	//
-	//	if pp.showPodCount {
-	//		lineItems = append(lineItems, tl.podCount)
 	//	}
 	//
 	//	if pp.binpackAnalysis {
@@ -200,9 +210,11 @@ func (pp *tablePodPrinter) getLineItems(tl *tablePodLine) []string {
 
 func (pp *tablePodPrinter) printClusterLine() {
 	pp.printLine(&tablePodLine{
-		//		namespace:       VoidValue,
-		//		pod:             VoidValue,
-		//		container:       VoidValue,
+		appNameLabel:  VoidValue,
+		namespace:     VoidValue,
+		pod:           VoidValue,
+		container:     VoidValue,
+		containerType: VoidContainerClassification,
 		//		cpuRequests:     pp.cm.cpu.requestString(pp.availableFormat),
 		//		cpuLimits:       pp.cm.cpu.limitString(pp.availableFormat),
 		//		cpuUtil:         pp.cm.cpu.utilString(pp.availableFormat),
@@ -217,20 +229,19 @@ func (pp *tablePodPrinter) printClusterLine() {
 	})
 }
 
-func (pp *tablePodPrinter) printPodLine(pl corev1.Pod) {
+func (pp *tablePodPrinter) printPodAppLine(pal podAppSummary) {
 
-	req, limit := resourcehelper.PodRequestsAndLimits(&pl)
-
-	fmt.Fprintf(os.Stdout, "Request : %v\n", req)
-	fmt.Fprintf(os.Stdout, "Limit   : %v\n", limit)
-	if pl.Spec.Overhead != nil {
-		fmt.Fprintf(os.Stdout, "Overhead: %v\n", pl.Spec.Overhead)
+	label := pal.appNameLabel
+	if pal.specialNoLabelSet {
+		label = "< Not Set >"
 	}
 	pp.printLine(&tablePodLine{
-		namespace:     pl.GetNamespace(),
-		pod:           pl.GetName(),
+		appNameLabel:  label,
+		namespace:     VoidValue,
+		pod:           VoidValue,
 		container:     VoidValue,
-		containerType: VoidValue,
+		containerType: VoidContainerClassification,
+		podCount:      stringFormatInt64(pal.podCount),
 		//		cpuRequests:     p.cpu.requestString(pp.availableFormat),
 		//		cpuLimits:       pm.cpu.limitString(pp.availableFormat),
 		//		cpuUtil:         pm.cpu.utilString(pp.availableFormat),
@@ -245,14 +256,48 @@ func (pp *tablePodPrinter) printPodLine(pl corev1.Pod) {
 
 }
 
-func (pp *tablePodPrinter) printContainerLine(pl corev1.Pod, cl corev1.Container, isInitContainer bool) {
+func (pp *tablePodPrinter) printPodLine(pl corev1.Pod) {
 
-	containerType := "normal"
-	if isInitContainer {
-		containerType = "init"
+	req, limit := resourcehelper.PodRequestsAndLimits(&pl)
+
+	if pp.showDebug {
+		fmt.Fprintf(os.Stdout, "Request : %v\n", req)
+		fmt.Fprintf(os.Stdout, "Limit   : %v\n", limit)
+		if pl.Spec.Overhead != nil {
+			fmt.Fprintf(os.Stdout, "Overhead: %v\n", pl.Spec.Overhead)
+		}
+		fmt.Fprintf(os.Stdout, "LABELS --> %v\n", pl.Labels)
 	}
 
+	label := pl.Labels[PodAppNameLabel]
+
 	pp.printLine(&tablePodLine{
+		appNameLabel:  label,
+		namespace:     pl.GetNamespace(),
+		pod:           pl.GetName(),
+		container:     VoidValue,
+		containerType: VoidContainerClassification,
+		podCount:      stringFormatInt64(1),
+		//		cpuRequests:     p.cpu.requestString(pp.availableFormat),
+		//		cpuLimits:       pm.cpu.limitString(pp.availableFormat),
+		//		cpuUtil:         pm.cpu.utilString(pp.availableFormat),
+		//		memoryRequests:  pm.memory.requestString(pp.availableFormat),
+		//		memoryLimits:    pm.memory.limitString(pp.availableFormat),
+		//		memoryUtil:      pm.memory.utilString(pp.availableFormat),
+		//		groupByLabels:   setNodeLabels(pp.uniqueGroupByNodeLabels, nm),
+		//		displayLabels:   setNodeLabels(pp.uniqueDisplayNodeLabels, nm),
+		//		remainderLabels: setNodeLabels(pp.uniqueRemainderNodeLabels, nm),
+		// binpack: pl.getBinAnalysis(),
+	})
+
+}
+
+func (pp *tablePodPrinter) printContainerLine(pl corev1.Pod, cl corev1.Container, containerType ContainerClassificationType) {
+
+	label := "-"
+
+	pp.printLine(&tablePodLine{
+		appNameLabel:  label,
 		namespace:     pl.GetNamespace(),
 		pod:           pl.GetName(),
 		container:     cl.Name,

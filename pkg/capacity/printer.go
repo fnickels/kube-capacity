@@ -45,7 +45,7 @@ func SupportedOutputs() []string {
 }
 
 func printList(cm *clusterMetric,
-	showContainers, showPods, showUtil, showPodCount, showNamespace, showAllNodeLabels bool,
+	showContainers, showPods, showUtil, showPodCount, showNamespace, showAllNodeLabels, showDebug bool,
 	displayNodeLabels, groupByNodeLabels,
 	output, sortBy string,
 	availableFormat, binpackAnalysis, showPodSummary bool) {
@@ -62,12 +62,14 @@ func printList(cm *clusterMetric,
 			groupByNodeLabels: groupByNodeLabels,
 			sortBy:            sortBy,
 			binpackAnalysis:   binpackAnalysis,
+			showDebug:         showDebug,
 		}
 		lp.Print(output)
 	} else if output == TableOutput {
 		if showPodSummary {
 			pp := &tablePodPrinter{
 				cm:                cm,
+				showPods:          showPods,
 				showUtil:          showUtil,
 				showPodCount:      showPodCount,
 				showContainers:    showContainers,
@@ -79,6 +81,7 @@ func printList(cm *clusterMetric,
 				w:                 new(tabwriter.Writer),
 				availableFormat:   availableFormat,
 				binpackAnalysis:   binpackAnalysis,
+				showDebug:         showDebug,
 			}
 			pp.Print()
 		} else {
@@ -96,6 +99,7 @@ func printList(cm *clusterMetric,
 				w:                 new(tabwriter.Writer),
 				availableFormat:   availableFormat,
 				binpackAnalysis:   binpackAnalysis,
+				showDebug:         showDebug,
 			}
 			tp.Print()
 		}
@@ -112,6 +116,7 @@ func printList(cm *clusterMetric,
 			groupByNodeLabels: groupByNodeLabels,
 			sortBy:            sortBy,
 			binpackAnalysis:   binpackAnalysis,
+			showDebug:         showDebug,
 		}
 		cp.Print(output)
 	} else {

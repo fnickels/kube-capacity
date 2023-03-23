@@ -32,7 +32,7 @@ import (
 // FetchAndPrint gathers cluster resource data and outputs it
 func FetchAndPrint(
 	showContainers, showPods, showUtil, showPodCount, showAllNodeLabels,
-	availableFormat, binpackAnalysis, showPodSummary bool,
+	availableFormat, binpackAnalysis, showPodSummary, showDebug bool,
 	podLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
 	namespaceLabels, namespace,
 	kubeContext, kubeConfig, output, sortBy string) {
@@ -61,37 +61,65 @@ func FetchAndPrint(
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "-------------------\n")
-	for i, pod := range podList.Items {
-		fmt.Fprintf(os.Stderr, "pod %d: %v\n", i, pod.GetName())
-		fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetNamespace())
-		fmt.Fprintf(os.Stderr, "      : %v\n", pod.Status.Phase)
-		fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetLabels())
-		fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetCreationTimestamp())
-		fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetAnnotations())
-		req, limit := resourcehelper.PodRequestsAndLimits(&pod)
-		fmt.Fprintf(os.Stderr, "      : %v\n", req)
-		fmt.Fprintf(os.Stderr, "      : %v\n", limit)
+	if showDebug {
+		fmt.Fprintf(os.Stdout, "-------------------\n")
+		for i, pod := range podList.Items {
+			fmt.Fprintf(os.Stdout, "pod %d: %v\n", i, pod.GetName())
+			fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetNamespace())
+			fmt.Fprintf(os.Stdout, "      : %v\n", pod.Status.Phase)
+			fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetLabels())
+			fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetCreationTimestamp())
+			fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetAnnotations())
 
-		if i > 10 {
-			break
-		}
-	}
-	fmt.Fprintf(os.Stderr, "-------------------\n")
+			req, limit := resourcehelper.PodRequestsAndLimits(&pod)
 
-	if pmList != nil {
-		fmt.Fprintf(os.Stderr, "===================\n")
-		for i, pod := range pmList.Items {
-			fmt.Fprintf(os.Stderr, "pod %d: %v\n", i, pod.GetName())
-			fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetNamespace())
-			fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetLabels())
-			fmt.Fprintf(os.Stderr, "      : %v\n", pod.GetCreationTimestamp())
+			fmt.Fprintf(os.Stdout, "      : %v\n", req)
+			fmt.Fprintf(os.Stdout, "      : %v\n", limit)
+			fmt.Fprintf(os.Stdout, " init : %v\n", len(pod.Spec.InitContainers))
+			fmt.Fprintf(os.Stdout, " cont : %v\n", len(pod.Spec.Containers))
+			fmt.Fprintf(os.Stdout, " ephm : %v\n", len(pod.Spec.EphemeralContainers))
+
+			for i, c := range pod.Spec.InitContainers {
+				fmt.Fprintf(os.Stdout, " init %3d -> %v\n", i, c.Name)
+				fmt.Fprintf(os.Stdout, "               Request  %v\n", c.Resources.Requests)
+				fmt.Fprintf(os.Stdout, "               Limit    %v\n", c.Resources.Limits)
+			}
+			for i, c := range pod.Spec.Containers {
+				fmt.Fprintf(os.Stdout, " cont %3d -> %v\n", i, c.Name)
+				fmt.Fprintf(os.Stdout, "               Request  %v\n", c.Resources.Requests)
+				fmt.Fprintf(os.Stdout, "               Limit    %v\n", c.Resources.Limits)
+			}
+			for i, c := range pod.Spec.EphemeralContainers {
+				fmt.Fprintf(os.Stdout, " ephm %3d -> %v \n", i, c.Name)
+				fmt.Fprintf(os.Stdout, "               Request  %v\n", c.Resources.Requests)
+				fmt.Fprintf(os.Stdout, "               Limit    %v\n", c.Resources.Limits)
+			}
 
 			if i > 5 {
 				break
 			}
 		}
-		fmt.Fprintf(os.Stderr, "===================\n")
+		fmt.Fprintf(os.Stdout, "-------------------\n")
+
+		if pmList != nil {
+			fmt.Fprintf(os.Stdout, "===================\n")
+			for i, pod := range pmList.Items {
+				fmt.Fprintf(os.Stdout, "pod %d: %v\n", i, pod.GetName())
+				fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetNamespace())
+				fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetLabels())
+				fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetCreationTimestamp())
+				fmt.Fprintf(os.Stdout, " cont : %v\n", len(pod.Containers))
+
+				for i, c := range pod.Containers {
+					fmt.Fprintf(os.Stdout, "      %3d -> %v  ==> %v\n", i, c.Name, c.Usage)
+				}
+
+				if i > 5 {
+					break
+				}
+			}
+			fmt.Fprintf(os.Stdout, "===================\n")
+		}
 	}
 
 	cm := buildClusterMetric(podList, pmList, nodeList, nmList)
@@ -99,7 +127,7 @@ func FetchAndPrint(
 	showNamespace := namespace == ""
 
 	printList(&cm,
-		showContainers, showPods, showUtil, showPodCount, showNamespace, showAllNodeLabels,
+		showContainers, showPods, showUtil, showPodCount, showNamespace, showAllNodeLabels, showDebug,
 		displayNodeLabels, groupByNodeLabels,
 		output, sortBy, availableFormat, binpackAnalysis, showPodSummary)
 }

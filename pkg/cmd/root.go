@@ -27,6 +27,7 @@ var (
 	showPods          bool
 	showUtil          bool
 	showPodCount      bool
+	showDebug         bool
 	displayNodeLabels string
 	groupByNodeLabels string
 	showAllNodeLabels bool
@@ -58,9 +59,13 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		if showContainers {
+			showPods = true
+		}
+
 		capacity.FetchAndPrint(
 			showContainers, showPods, showUtil, showPodCount, showAllNodeLabels,
-			availableFormat, binpackAnalysis, showPodSummary,
+			availableFormat, binpackAnalysis, showPodSummary, showDebug,
 			podLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
 			namespaceLabels, namespace, kubeContext, kubeConfig, outputFormat, sortBy)
 	},
@@ -68,7 +73,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&showContainers,
-		"containers", "c", false, "includes containers in output")
+		"containers", "c", false, "includes containers in output (forces --pods)")
 	rootCmd.PersistentFlags().BoolVarP(&showPods,
 		"pods", "p", false, "includes pods in output")
 	rootCmd.PersistentFlags().BoolVarP(&showUtil,
@@ -93,6 +98,8 @@ func init() {
 		"binpack-analysis", "b", false, "add node binpack analysis fields")
 	rootCmd.PersistentFlags().BoolVarP(&showPodSummary,
 		"pod-summary", "", false, "generate alternate report of pods")
+	rootCmd.PersistentFlags().BoolVarP(&showDebug,
+		"debug", "d", false, "Show debug data")
 	rootCmd.PersistentFlags().StringVarP(&namespace,
 		"namespace", "n", "", "only include pods from this namespace")
 	rootCmd.PersistentFlags().StringVarP(&kubeContext,

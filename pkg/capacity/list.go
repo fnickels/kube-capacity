@@ -75,6 +75,7 @@ type listPrinter struct {
 	showUtil                bool
 	showPodCount            bool
 	showAllNodeLabels       bool
+	showDebug               bool
 	displayNodeLabels       string
 	groupByNodeLabels       string
 	sortBy                  string

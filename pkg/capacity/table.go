@@ -29,6 +29,7 @@ type tablePrinter struct {
 	showContainers            bool
 	showNamespace             bool
 	showAllNodeLabels         bool
+	showDebug                 bool
 	displayNodeLabels         string
 	groupByNodeLabels         string
 	sortBy                    string
@@ -51,6 +52,9 @@ type tableLine struct {
 	memoryRequests  string
 	memoryLimits    string
 	memoryUtil      string
+	eniRequests     string
+	eniLimits       string
+	eniUtil         string
 	podCount        string
 	groupByLabels   []string
 	displayLabels   []string
@@ -69,6 +73,9 @@ var tableHeaderStrings = tableLine{
 	memoryRequests:  "MEMORY REQUESTS",
 	memoryLimits:    "MEMORY LIMITS",
 	memoryUtil:      "MEMORY UTIL",
+	eniRequests:     "ENI REQUESTS",
+	eniLimits:       "ENI LIMITS",
+	eniUtil:         "ENI UTIL",
 	podCount:        "POD COUNT",
 	groupByLabels:   []string{},
 	displayLabels:   []string{},
@@ -178,6 +185,13 @@ func (tp *tablePrinter) getLineItems(tl *tableLine) []string {
 		lineItems = append(lineItems, tl.memoryUtil)
 	}
 
+	lineItems = append(lineItems, tl.eniRequests)
+	lineItems = append(lineItems, tl.eniLimits)
+
+	if tp.showUtil {
+		lineItems = append(lineItems, tl.eniUtil)
+	}
+
 	if tp.showPodCount {
 		lineItems = append(lineItems, tl.podCount)
 	}
@@ -212,6 +226,9 @@ func (tp *tablePrinter) printClusterLine() {
 		memoryRequests:  tp.cm.memory.requestString(tp.availableFormat),
 		memoryLimits:    tp.cm.memory.limitString(tp.availableFormat),
 		memoryUtil:      tp.cm.memory.utilString(tp.availableFormat),
+		eniRequests:     tp.cm.eni.requestString(tp.availableFormat),
+		eniLimits:       tp.cm.eni.limitString(tp.availableFormat),
+		eniUtil:         tp.cm.eni.utilString(tp.availableFormat),
 		podCount:        tp.cm.podCount.podCountString(),
 		groupByLabels:   setMultipleVoids(len(tp.uniqueGroupByNodeLabels)),
 		displayLabels:   setMultipleVoids(len(tp.uniqueDisplayNodeLabels)),
@@ -232,6 +249,9 @@ func (tp *tablePrinter) printNodeLine(nodeName string, nm *nodeMetric) {
 		memoryRequests:  nm.memory.requestString(tp.availableFormat),
 		memoryLimits:    nm.memory.limitString(tp.availableFormat),
 		memoryUtil:      nm.memory.utilString(tp.availableFormat),
+		eniRequests:     nm.eni.requestString(tp.availableFormat),
+		eniLimits:       nm.eni.limitString(tp.availableFormat),
+		eniUtil:         nm.eni.utilString(tp.availableFormat),
 		podCount:        nm.podCount.podCountString(),
 		groupByLabels:   setNodeLabels(tp.uniqueGroupByNodeLabels, nm),
 		displayLabels:   setNodeLabels(tp.uniqueDisplayNodeLabels, nm),
@@ -252,6 +272,9 @@ func (tp *tablePrinter) printPodLine(nodeName string, nm *nodeMetric, pm *podMet
 		memoryRequests:  pm.memory.requestString(tp.availableFormat),
 		memoryLimits:    pm.memory.limitString(tp.availableFormat),
 		memoryUtil:      pm.memory.utilString(tp.availableFormat),
+		eniRequests:     pm.eni.requestString(tp.availableFormat),
+		eniLimits:       pm.eni.limitString(tp.availableFormat),
+		eniUtil:         pm.eni.utilString(tp.availableFormat),
 		groupByLabels:   setNodeLabels(tp.uniqueGroupByNodeLabels, nm),
 		displayLabels:   setNodeLabels(tp.uniqueDisplayNodeLabels, nm),
 		remainderLabels: setNodeLabels(tp.uniqueRemainderNodeLabels, nm),
@@ -271,6 +294,9 @@ func (tp *tablePrinter) printContainerLine(nodeName string, nm *nodeMetric, pm *
 		memoryRequests:  cm.memory.requestString(tp.availableFormat),
 		memoryLimits:    cm.memory.limitString(tp.availableFormat),
 		memoryUtil:      cm.memory.utilString(tp.availableFormat),
+		eniRequests:     cm.eni.requestString(tp.availableFormat),
+		eniLimits:       cm.eni.limitString(tp.availableFormat),
+		eniUtil:         cm.eni.utilString(tp.availableFormat),
 		groupByLabels:   setNodeLabels(tp.uniqueGroupByNodeLabels, nm),
 		displayLabels:   setNodeLabels(tp.uniqueDisplayNodeLabels, nm),
 		remainderLabels: setNodeLabels(tp.uniqueRemainderNodeLabels, nm),

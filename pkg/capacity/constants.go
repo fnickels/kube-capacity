@@ -3,6 +3,8 @@ package capacity
 const VoidValue = "*"
 const CSVStringTerminator = "\""
 
+const PodAppNameLabel = "appname"
+
 func setMultipleVoids(n int) []string {
 
 	if n <= 0 {
