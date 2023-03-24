@@ -14,3 +14,41 @@ help: kube-capacity
 
 kube-capacity: go.mod go.sum Makefile main.go pkg/*/*.go
 	go build .
+
+
+#################
+# Go Procedures #
+#################
+
+##@ Go Support & Helper targets
+.PHONY: goversion
+goversion: ## go version 
+	@go version
+
+.PHONY: goenv
+goenv: goversion ## go version & env
+	go env
+
+.PHONY: gotidy
+gotidy: ## go mod tidy - cleans up go modules
+	go mod tidy
+
+.PHONY: govendor
+govendor: gotidy ## go mod tidy & vendor - cleans up go modules and creates / updates vendor directory
+	go mod vendor
+	go mod verify
+
+## Looks for newer versions of modules
+.PHONY: goupdatemods
+goupdatemods: goenv ## Update Go Modules
+	go get -u
+
+.PHONY: refresh
+refresh: goupdatemods gotidy govendor ## Update Modules, Tidy up Modules, & Generate vendor dir
+
+.PHONY: fullrefresh
+fullrefresh: goclean goupdatemods gotidy govendor ## Clean Go Caches and the 'refresh'
+
+.PHONY: goclean
+goclean: goenv ## Clean Go Modules caches
+	go clean -r -cache -modcache

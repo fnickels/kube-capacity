@@ -17,6 +17,7 @@ package capacity
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -57,14 +58,15 @@ type resourceMetric struct {
 }
 
 type clusterMetric struct {
-	cpu           *resourceMetric
-	memory        *resourceMetric
-	eni           *resourceMetric
-	nodeMetrics   map[string]*nodeMetric
-	podCount      *podCount
-	rawPodList    *corev1.PodList
-	rawPmList     *v1beta1.PodMetricsList
-	rawPodAppList []podAppSummary
+	cpu                  *resourceMetric
+	memory               *resourceMetric
+	eni                  *resourceMetric
+	nodeMetrics          map[string]*nodeMetric
+	podCount             *podCount
+	rawPodList           []corev1.Pod
+	rawPmList            []v1beta1.PodMetrics
+	podAppSelectorLabels []string
+	rawPodAppList        []podAppSummary
 }
 
 type nodeMetric struct {
@@ -99,6 +101,7 @@ type podCount struct {
 }
 
 type podAppSummary struct {
+	appNameKey        string
 	appNameLabel      string
 	podCount          int64
 	specialNoLabelSet bool
@@ -120,7 +123,14 @@ type resourceSummary struct {
 }
 
 func buildClusterMetric(podList *corev1.PodList, pmList *v1beta1.PodMetricsList,
-	nodeList *corev1.NodeList, nmList *v1beta1.NodeMetricsList) clusterMetric {
+	nodeList *corev1.NodeList, nmList *v1beta1.NodeMetricsList, selectPodLabels string) clusterMetric {
+
+	rawPmlist := []v1beta1.PodMetrics{}
+	if pmList != nil {
+		rawPmlist = pmList.Items
+	}
+
+	appList, appKeys := getPodAppsList(podList, selectPodLabels)
 
 	cm := clusterMetric{
 		cpu:         &resourceMetric{resourceType: CPU},
@@ -128,10 +138,11 @@ func buildClusterMetric(podList *corev1.PodList, pmList *v1beta1.PodMetricsList,
 		eni:         &resourceMetric{resourceType: ENI},
 		nodeMetrics: map[string]*nodeMetric{},
 		podCount:    &podCount{},
-		// add these for pod summary feature
-		rawPodList:    podList,
-		rawPmList:     pmList,
-		rawPodAppList: getPodAppsList(podList),
+		// pod summary elements
+		rawPodList:           podList.Items,
+		rawPmList:            rawPmlist,
+		podAppSelectorLabels: appKeys,
+		rawPodAppList:        appList,
 	}
 
 	var totalPodAllocatable int64
@@ -295,27 +306,6 @@ func (cm *clusterMetric) addNodeMetric(nm *nodeMetric) {
 	cm.cpu.addMetric(nm.cpu)
 	cm.memory.addMetric(nm.memory)
 	cm.eni.addMetric(nm.eni)
-}
-
-func (cm *clusterMetric) getUniqueNodeLabels() []string {
-	result := []string{}
-
-	for name := range cm.nodeMetrics {
-		for k, _ := range cm.nodeMetrics[name].nodeLabels {
-			found := false
-			for _, b := range result {
-				if k == b {
-					found = true
-					break
-				}
-			}
-			if !found {
-				result = append(result, k)
-			}
-		}
-	}
-
-	return result
 }
 
 func (cm *clusterMetric) getSortedNodeMetrics(groupByLabels []string, sortBy string) []*nodeMetric {
@@ -638,33 +628,44 @@ func stringFormatInt64(value int64) string {
 /*
 Scans all of the pods' labels and returns a list of the unique values set for 'appname'
 */
-func getPodAppsList(podList *corev1.PodList) (result []podAppSummary) {
+func getPodAppsList(podList *corev1.PodList, selectPodLabels string) (result []podAppSummary, orderedPodAppKeys []string) {
 
 	// establish 'no label set' entry for pods that do not have an 'appname' label set
 	noLabelCount := int64(0)
 	noLabelPods := []corev1.Pod{}
 
+	if selectPodLabels != "" {
+		orderedPodAppKeys = strings.Split(selectPodLabels, ",")
+	} else {
+		orderedPodAppKeys = strings.Split(PodAppNameLabelDefaultSelector, ",")
+	}
+
 	for _, pod := range podList.Items {
 		foundLabel := false
 		for k, v := range pod.GetLabels() {
-			if k == PodAppNameLabel {
-				foundLabel = true
-				found := false
-				for i, podapp := range result {
-					if v == podapp.appNameLabel {
-						found = true
-						result[i].podCount++
-						result[i].Items = append(result[i].Items, pod)
-						break
+			for _, checkLabel := range orderedPodAppKeys {
+				if k == checkLabel {
+					foundLabel = true
+					found := false
+					for i, podapp := range result {
+						if v == podapp.appNameLabel && k == podapp.appNameKey {
+							found = true
+							result[i].podCount++
+							result[i].Items = append(result[i].Items, pod)
+							break
+						}
 					}
-				}
-				if !found {
-					result = append(result, podAppSummary{
-						appNameLabel:      v,
-						podCount:          1,
-						specialNoLabelSet: false,
-						Items:             []corev1.Pod{pod},
-					})
+					// add the label if it did not exist before
+					if !found {
+						result = append(result, podAppSummary{
+							appNameKey:        k,
+							appNameLabel:      v,
+							podCount:          1,
+							specialNoLabelSet: false,
+							Items:             []corev1.Pod{pod},
+						})
+					}
+					break
 				}
 			}
 		}
@@ -676,6 +677,7 @@ func getPodAppsList(podList *corev1.PodList) (result []podAppSummary) {
 	// add 'no label set' entry if they exist
 	if noLabelCount > 0 {
 		result = append(result, podAppSummary{
+			appNameKey:        "",
 			appNameLabel:      "",
 			podCount:          noLabelCount,
 			specialNoLabelSet: true,
@@ -683,5 +685,5 @@ func getPodAppsList(podList *corev1.PodList) (result []podAppSummary) {
 		})
 	}
 
-	return result
+	return result, orderedPodAppKeys
 }

@@ -1,6 +1,26 @@
 package capacity
 
-func processPodLabelSelections(cm *clusterMetric) ([]string, error) {
+func (cm *clusterMetric) getUniquePodLabels() (result []string) {
+
+	for _, pod := range cm.rawPodList {
+		for k, _ := range pod.Labels {
+			found := false
+			for _, b := range result {
+				if k == b {
+					found = true
+					break
+				}
+			}
+			if !found {
+				result = append(result, k)
+			}
+		}
+	}
+
+	return result
+}
+
+func processPodLabelToDisplay(cm *clusterMetric) ([]string, error) {
 
 	// if nothing is called for exit
 	//	if groupBy == "" && display == "" && !showAll {
@@ -8,13 +28,11 @@ func processPodLabelSelections(cm *clusterMetric) ([]string, error) {
 	//		return []string{}, []string{}, []string{}, nil
 	//	}
 
-	//badLabels := []string{}
-
-	displayLabels := []string{}
-
-	//	remainderLabels := []string{}
+	//  badLabels := []string{}
+	//  displayLabels := []string{}
+	// remainderLabels := []string{}
 	//
-	//	uniqueNodeLabels := cm.getUniqueNodeLabels()
+	uniquePodLabels := cm.getUniquePodLabels()
 	//
 	//	// process any 'group by' labels 1st
 	//	if groupBy != "" {
@@ -89,5 +107,5 @@ func processPodLabelSelections(cm *clusterMetric) ([]string, error) {
 	//		}
 	//	}
 
-	return displayLabels, nil
+	return uniquePodLabels, nil
 }

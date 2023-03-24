@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/robscott/kube-capacity/pkg/capacity"
+	"github.com/fnickels/kube-capacity/pkg/capacity"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +31,8 @@ var (
 	displayNodeLabels string
 	groupByNodeLabels string
 	showAllNodeLabels bool
+	showAllPodLabels  bool
+	selectPodLabels   string
 	podLabels         string
 	nodeLabels        string
 	namespaceLabels   string
@@ -43,6 +45,8 @@ var (
 	binpackAnalysis   bool
 	showPodSummary    bool
 )
+
+var criteria DisplayCriteria
 
 var rootCmd = &cobra.Command{
 	Use:   "kube-capacity",
@@ -66,12 +70,14 @@ var rootCmd = &cobra.Command{
 		capacity.FetchAndPrint(
 			showContainers, showPods, showUtil, showPodCount, showAllNodeLabels,
 			availableFormat, binpackAnalysis, showPodSummary, showDebug,
-			podLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
+			podLabels, selectPodLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
 			namespaceLabels, namespace, kubeContext, kubeConfig, outputFormat, sortBy)
 	},
 }
 
 func init() {
+	criteria.showContainers = true
+
 	rootCmd.PersistentFlags().BoolVarP(&showContainers,
 		"containers", "c", false, "includes containers in output (forces --pods)")
 	rootCmd.PersistentFlags().BoolVarP(&showPods,
@@ -84,12 +90,16 @@ func init() {
 		"available", "a", false, "includes quantity available instead of percentage used (ignored with csv or tsv output types)")
 	rootCmd.PersistentFlags().StringVarP(&podLabels,
 		"pod-labels", "l", "", "labels to filter pods with")
+	rootCmd.PersistentFlags().StringVarP(&selectPodLabels,
+		"select-pod-labels", "", "", "comma separated list of pod label(s) to identify pod families (default: '"+capacity.PodAppNameLabelDefaultSelector+"')")
 	rootCmd.PersistentFlags().StringVarP(&displayNodeLabels,
 		"display-node-labels", "", "", "comma separated list of node label(s) to display")
 	rootCmd.PersistentFlags().StringVarP(&groupByNodeLabels,
 		"group-by-node-labels", "", "", "comma separated list of node label(s) to group by")
 	rootCmd.PersistentFlags().BoolVarP(&showAllNodeLabels,
-		"show-all-labels", "", false, "show all node labels")
+		"show-all-node-labels", "", false, "show all node labels")
+	rootCmd.PersistentFlags().BoolVarP(&showAllPodLabels,
+		"show-all-pod-labels", "", false, "show all pod labels")
 	rootCmd.PersistentFlags().StringVarP(&nodeLabels,
 		"node-labels", "", "", "labels to filter nodes with")
 	rootCmd.PersistentFlags().StringVarP(&namespaceLabels,

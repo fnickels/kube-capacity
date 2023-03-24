@@ -3,7 +3,7 @@ package capacity
 const VoidValue = "*"
 const CSVStringTerminator = "\""
 
-const PodAppNameLabel = "appname"
+const PodAppNameLabelDefaultSelector = "appname,app,name,app.kubernetes.io/name,k8s-app"
 
 func setMultipleVoids(n int) []string {
 
@@ -33,4 +33,12 @@ func setNodeLabels(labelNames []string, nm *nodeMetric) []string {
 	}
 
 	return labels
+}
+
+func sliceFilledWithString(size int, str string) []string {
+	data := make([]string, size)
+	for i := 0; i < size; i++ {
+		data[i] = str
+	}
+	return data
 }

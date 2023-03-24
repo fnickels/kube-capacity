@@ -1,4 +1,4 @@
-module github.com/robscott/kube-capacity
+module github.com/fnickels/kube-capacity
 
 go 1.19
 

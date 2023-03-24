@@ -5,6 +5,26 @@ import (
 	"strings"
 )
 
+func (cm *clusterMetric) getUniqueNodeLabels() (result []string) {
+
+	for _, node := range cm.nodeMetrics {
+		for k, _ := range node.nodeLabels {
+			found := false
+			for _, b := range result {
+				if k == b {
+					found = true
+					break
+				}
+			}
+			if !found {
+				result = append(result, k)
+			}
+		}
+	}
+
+	return result
+}
+
 func processNodeLabelSelections(cm *clusterMetric, groupBy, display string, showAll bool) ([]string, []string, []string, error) {
 
 	// if nothing is called for exit

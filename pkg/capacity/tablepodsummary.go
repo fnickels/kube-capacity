@@ -20,24 +20,25 @@ const (
 )
 
 type tablePodPrinter struct {
-	cm                        *clusterMetric
-	showPods                  bool
-	showUtil                  bool
-	showPodCount              bool
-	showContainers            bool
-	showNamespace             bool
-	showAllNodeLabels         bool
-	showDebug                 bool
-	displayNodeLabels         string
-	groupByNodeLabels         string
-	sortBy                    string
-	w                         *tabwriter.Writer
-	availableFormat           bool
-	binpackAnalysis           bool
-	uniquePodLabels           []string
-	uniqueGroupByNodeLabels   []string
-	uniqueDisplayNodeLabels   []string
-	uniqueRemainderNodeLabels []string
+	cm                         *clusterMetric
+	showPods                   bool
+	showUtil                   bool
+	showPodCount               bool
+	showContainers             bool
+	showNamespace              bool
+	showAllNodeLabels          bool
+	showDebug                  bool
+	displayNodeLabels          string
+	groupByNodeLabels          string
+	sortBy                     string
+	w                          *tabwriter.Writer
+	availableFormat            bool
+	binpackAnalysis            bool
+	uniquePodAppSelectorLabels []string
+	uniquePodLabels            []string
+	uniqueGroupByNodeLabels    []string
+	uniqueDisplayNodeLabels    []string
+	uniqueRemainderNodeLabels  []string
 }
 
 type tablePodLine struct {
@@ -93,7 +94,15 @@ func (pp *tablePodPrinter) Print() {
 	var err error
 
 	// process Node Label selection elements
-	pp.uniquePodLabels, err = processPodLabelSelections(pp.cm)
+	pp.uniquePodLabels, err = processPodLabelToDisplay(pp.cm)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	// copy Pod Label names to the Header object
+	tablePodHeaderStrings.podLabels = pp.uniquePodLabels
 
 	// sort pod list (maybe)
 	sortedPodAppList := pp.cm.rawPodAppList
@@ -106,24 +115,25 @@ func (pp *tablePodPrinter) Print() {
 
 	for _, pal := range sortedPodAppList {
 
-		pp.printPodAppLine(pal)
+		pp.printPodAppLine(&pal)
 
 		if pp.showPods || pp.showContainers {
 			for _, pl := range pal.Items {
 
-				pp.printPodLine(pl)
+				pp.printPodLine(&pl, &pal)
 
 				if pp.showContainers {
 					for _, cc := range pl.Spec.InitContainers {
-						pp.printContainerLine(pl, cc, InitContainerClassification)
+						pp.printContainerLine(&pl, &pal, &cc, InitContainerClassification)
 					}
 
 					for _, cc := range pl.Spec.Containers {
-						pp.printContainerLine(pl, cc, NormalContainerClassification)
+						pp.printContainerLine(&pl, &pal, &cc, NormalContainerClassification)
 					}
 
 					for _, cc := range pl.Spec.EphemeralContainers {
-						pp.printContainerLine(pl, corev1.Container(cc.EphemeralContainerCommon), EphemeralContainerClassification)
+						ce := corev1.Container(cc.EphemeralContainerCommon)
+						pp.printContainerLine(&pl, &pal, &ce, EphemeralContainerClassification)
 					}
 				}
 			}
@@ -149,10 +159,11 @@ func (pp *tablePodPrinter) getLineItems(tl *tablePodLine) []string {
 
 	lineItems := []string{tl.appNameLabel}
 
+	if pp.showNamespace {
+		lineItems = append(lineItems, tl.namespace)
+	}
+
 	if pp.showContainers || pp.showPods {
-		if pp.showNamespace {
-			lineItems = append(lineItems, tl.namespace)
-		}
 		lineItems = append(lineItems, tl.pod)
 	}
 
@@ -199,22 +210,31 @@ func (pp *tablePodPrinter) getLineItems(tl *tablePodLine) []string {
 	//		lineItems = append(lineItems, tl.binpack.binpackLimitRatio)
 	//		lineItems = append(lineItems, tl.binpack.binpackUtilizationRatio)
 	//	}
-	//
-	//	// if any remaining Node Labels have been specified to be displayed add them here
-	//	for _, x := range tl.remainderLabels {
-	//		lineItems = append(lineItems, x)
-	//	}
-	//
+
+	// if Pod Labels have been specified to be displayed add them here
+	for _, x := range tl.podLabels {
+		lineItems = append(lineItems, x)
+	}
+
 	return lineItems
 }
 
 func (pp *tablePodPrinter) printClusterLine() {
+
+	pcSum := int64(0)
+
+	for _, ps := range pp.cm.rawPodAppList {
+		pcSum += ps.podCount
+	}
+
 	pp.printLine(&tablePodLine{
 		appNameLabel:  VoidValue,
 		namespace:     VoidValue,
 		pod:           VoidValue,
 		container:     VoidValue,
 		containerType: VoidContainerClassification,
+		podCount:      stringFormatInt64(pcSum),
+		podLabels:     sliceFilledWithString(len(pp.uniquePodLabels), VoidValue),
 		//		cpuRequests:     pp.cm.cpu.requestString(pp.availableFormat),
 		//		cpuLimits:       pp.cm.cpu.limitString(pp.availableFormat),
 		//		cpuUtil:         pp.cm.cpu.utilString(pp.availableFormat),
@@ -229,19 +249,35 @@ func (pp *tablePodPrinter) printClusterLine() {
 	})
 }
 
-func (pp *tablePodPrinter) printPodAppLine(pal podAppSummary) {
+func (pp *tablePodPrinter) printPodAppLine(pal *podAppSummary) {
 
-	label := pal.appNameLabel
-	if pal.specialNoLabelSet {
-		label = "< Not Set >"
+	// get pod labels from across all related pods
+	labelList := make([]string, len(pp.uniquePodLabels))
+	for i, labelName := range pp.uniquePodLabels {
+		listOfValues := map[string]bool{}
+		for _, pod := range pal.Items {
+			labelValue := pod.Labels[labelName]
+			if _, ok := listOfValues[labelValue]; ok {
+				listOfValues[labelValue] = true
+			}
+		}
+		values := make([]string, len(listOfValues))
+		j := 0
+		for k := range listOfValues {
+			values[j] = k
+			j++
+		}
+		labelList[i] = strings.Join(values, ",")
 	}
+
 	pp.printLine(&tablePodLine{
-		appNameLabel:  label,
-		namespace:     VoidValue,
+		appNameLabel:  pal.setAppLabel(),
+		namespace:     pal.getNamespacesUsed(),
 		pod:           VoidValue,
 		container:     VoidValue,
 		containerType: VoidContainerClassification,
 		podCount:      stringFormatInt64(pal.podCount),
+		podLabels:     labelList,
 		//		cpuRequests:     p.cpu.requestString(pp.availableFormat),
 		//		cpuLimits:       pm.cpu.limitString(pp.availableFormat),
 		//		cpuUtil:         pm.cpu.utilString(pp.availableFormat),
@@ -256,9 +292,9 @@ func (pp *tablePodPrinter) printPodAppLine(pal podAppSummary) {
 
 }
 
-func (pp *tablePodPrinter) printPodLine(pl corev1.Pod) {
+func (pp *tablePodPrinter) printPodLine(pl *corev1.Pod, pal *podAppSummary) {
 
-	req, limit := resourcehelper.PodRequestsAndLimits(&pl)
+	req, limit := resourcehelper.PodRequestsAndLimits(pl)
 
 	if pp.showDebug {
 		fmt.Fprintf(os.Stdout, "Request : %v\n", req)
@@ -269,15 +305,19 @@ func (pp *tablePodPrinter) printPodLine(pl corev1.Pod) {
 		fmt.Fprintf(os.Stdout, "LABELS --> %v\n", pl.Labels)
 	}
 
-	label := pl.Labels[PodAppNameLabel]
+	labelList := make([]string, len(pp.uniquePodLabels))
+	for i, labelName := range pp.uniquePodLabels {
+		labelList[i] = pl.Labels[labelName]
+	}
 
 	pp.printLine(&tablePodLine{
-		appNameLabel:  label,
+		appNameLabel:  pal.setAppLabel(),
 		namespace:     pl.GetNamespace(),
 		pod:           pl.GetName(),
 		container:     VoidValue,
 		containerType: VoidContainerClassification,
 		podCount:      stringFormatInt64(1),
+		podLabels:     labelList,
 		//		cpuRequests:     p.cpu.requestString(pp.availableFormat),
 		//		cpuLimits:       pm.cpu.limitString(pp.availableFormat),
 		//		cpuUtil:         pm.cpu.utilString(pp.availableFormat),
@@ -292,16 +332,15 @@ func (pp *tablePodPrinter) printPodLine(pl corev1.Pod) {
 
 }
 
-func (pp *tablePodPrinter) printContainerLine(pl corev1.Pod, cl corev1.Container, containerType ContainerClassificationType) {
-
-	label := "-"
+func (pp *tablePodPrinter) printContainerLine(pl *corev1.Pod, pal *podAppSummary, cl *corev1.Container, containerType ContainerClassificationType) {
 
 	pp.printLine(&tablePodLine{
-		appNameLabel:  label,
+		appNameLabel:  "-",
 		namespace:     pl.GetNamespace(),
 		pod:           pl.GetName(),
 		container:     cl.Name,
 		containerType: containerType,
+		podLabels:     sliceFilledWithString(len(pp.uniquePodLabels), ""),
 
 		//		cpuRequests:     cm.cpu.requestString(pp.availableFormat),
 		//		cpuLimits:       cm.cpu.limitString(pp.availableFormat),
@@ -314,4 +353,25 @@ func (pp *tablePodPrinter) printContainerLine(pl corev1.Pod, cl corev1.Container
 		//		remainderLabels: setNodeLabels(pp.uniqueRemainderNodeLabels, nm),
 		//		binpack:         cm.getBinAnalysis(),
 	})
+}
+
+func (pal *podAppSummary) setAppLabel() string {
+	if pal.specialNoLabelSet {
+		return "< Not Set >"
+	}
+	return pal.appNameKey + ":" + pal.appNameLabel
+}
+
+func (pal *podAppSummary) getNamespacesUsed() string {
+	namespaces := map[string]bool{}
+	for _, pod := range pal.Items {
+		if _, ok := namespaces[pod.Namespace]; !ok {
+			namespaces[pod.Namespace] = true
+		}
+	}
+	keys := make([]string, 0, len(namespaces))
+	for k := range namespaces {
+		keys = append(keys, k)
+	}
+	return strings.Join(keys, ",")
 }

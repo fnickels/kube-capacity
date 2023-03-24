@@ -22,7 +22,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
 
-	"github.com/robscott/kube-capacity/pkg/kube"
+	"github.com/fnickels/kube-capacity/pkg/kube"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	resourcehelper "k8s.io/kubectl/pkg/util/resource"
@@ -33,7 +33,7 @@ import (
 func FetchAndPrint(
 	showContainers, showPods, showUtil, showPodCount, showAllNodeLabels,
 	availableFormat, binpackAnalysis, showPodSummary, showDebug bool,
-	podLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
+	podLabels, selectPodLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
 	namespaceLabels, namespace,
 	kubeContext, kubeConfig, output, sortBy string) {
 
@@ -122,7 +122,7 @@ func FetchAndPrint(
 		}
 	}
 
-	cm := buildClusterMetric(podList, pmList, nodeList, nmList)
+	cm := buildClusterMetric(podList, pmList, nodeList, nmList, selectPodLabels)
 
 	showNamespace := namespace == ""
 
