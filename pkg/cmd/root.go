@@ -46,7 +46,7 @@ var (
 	showPodSummary    bool
 )
 
-var criteria DisplayCriteria
+var criteria capacity.DisplayCriteria
 
 var rootCmd = &cobra.Command{
 	Use:   "kube-capacity",
@@ -76,7 +76,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	criteria.showContainers = true
+	criteria.showDebug = true
 
 	rootCmd.PersistentFlags().BoolVarP(&showContainers,
 		"containers", "c", false, "includes containers in output (forces --pods)")
