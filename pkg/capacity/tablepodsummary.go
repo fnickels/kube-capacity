@@ -308,7 +308,7 @@ func (pp *tablePodPrinter) printPodAppLine(pal *podAppSummary) {
 		//		groupByLabels:   setNodeLabels(pp.uniqueGroupByNodeLabels, nm),
 		//		displayLabels:   setNodeLabels(pp.uniqueDisplayNodeLabels, nm),
 		//		remainderLabels: setNodeLabels(pp.uniqueRemainderNodeLabels, nm),
-		// binpack: pal.getBinAnalysis(),
+		binpack: pal.getBinAnalysis(),
 	})
 
 }
@@ -346,6 +346,7 @@ func (pp *tablePodPrinter) printPodLine(pl *corev1.Pod, pm *podMetric, pal *podA
 	a5 := ""
 	a6 := ""
 	nodename := ""
+	z := binAnalysis{}
 
 	if pm != nil {
 		a1 = pm.cpu.requestString(pp.cr)
@@ -355,6 +356,7 @@ func (pp *tablePodPrinter) printPodLine(pl *corev1.Pod, pm *podMetric, pal *podA
 		a5 = pm.memory.limitString(pp.cr)
 		a6 = pm.memory.utilString(pp.cr)
 		nodename = pm.node
+		z = pm.getBinAnalysis()
 	}
 
 	pp.printLine(&tablePodLine{
@@ -376,7 +378,7 @@ func (pp *tablePodPrinter) printPodLine(pl *corev1.Pod, pm *podMetric, pal *podA
 		//		groupByLabels:   setNodeLabels(pp.uniqueGroupByNodeLabels, nm),
 		//		displayLabels:   setNodeLabels(pp.uniqueDisplayNodeLabels, nm),
 		//		remainderLabels: setNodeLabels(pp.uniqueRemainderNodeLabels, nm),
-		//binpack: pl.getBinAnalysis(),
+		binpack: z,
 	})
 
 }
