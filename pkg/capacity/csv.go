@@ -23,19 +23,9 @@ import (
 
 type csvPrinter struct {
 	cm                        *clusterMetric
-	showPods                  bool
-	showUtil                  bool
-	showPodCount              bool
-	showContainers            bool
-	showNamespace             bool
-	showAllNodeLabels         bool
-	showDebug                 bool
-	displayNodeLabels         string
-	groupByNodeLabels         string
-	sortBy                    string
+	cr                        *DisplayCriteria
 	file                      io.Writer
 	separator                 string
-	binpackAnalysis           bool
 	uniqueGroupByNodeLabels   []string
 	uniqueDisplayNodeLabels   []string
 	uniqueRemainderNodeLabels []string
@@ -95,10 +85,18 @@ var csvHeaderStrings = csvLine{
 	binpack:                  binHeaders,
 }
 
-func (cp *csvPrinter) Print(outputType string) {
+func PrintCSV(cm *clusterMetric, cr *DisplayCriteria) {
 
-	cp.file = os.Stdout
-	cp.separator = outputType
+	cp := &csvPrinter{
+		cm:        cm,
+		cr:        cr,
+		file:      os.Stdout,
+		separator: ",",
+	}
+
+	if cr.OutputFormat == TSVOutput {
+		cp.separator = "\t"
+	}
 
 	var err error
 
@@ -106,7 +104,7 @@ func (cp *csvPrinter) Print(outputType string) {
 	cp.uniqueGroupByNodeLabels,
 		cp.uniqueDisplayNodeLabels,
 		cp.uniqueRemainderNodeLabels,
-		err = processNodeLabelSelections(cp.cm, cp.groupByNodeLabels, cp.displayNodeLabels, cp.showAllNodeLabels)
+		err = processNodeLabelSelections(cp.cm, cp.cr.GroupByNodeLabels, cp.cr.DisplayNodeLabels, cp.cr.ShowAllNodeLabels)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -119,7 +117,7 @@ func (cp *csvPrinter) Print(outputType string) {
 	csvHeaderStrings.remainderLabels = cp.uniqueRemainderNodeLabels
 
 	// sort first by Group By, then sort criteria
-	sortedNodeMetrics := cp.cm.getSortedNodeMetrics(cp.uniqueGroupByNodeLabels, cp.sortBy)
+	sortedNodeMetrics := cp.cm.getSortedNodeMetrics(cp.uniqueGroupByNodeLabels, cp.cr.SortBy)
 
 	cp.printLine(&csvHeaderStrings)
 
@@ -130,12 +128,12 @@ func (cp *csvPrinter) Print(outputType string) {
 	for _, nm := range sortedNodeMetrics {
 		cp.printNodeLine(nm.name, nm)
 
-		if cp.showPods || cp.showContainers {
-			podMetrics := nm.getSortedPodMetrics(cp.sortBy)
+		if cp.cr.ShowPods || cp.cr.ShowContainers {
+			podMetrics := nm.getSortedPodMetrics(cp.cr.SortBy)
 			for _, pm := range podMetrics {
 				cp.printPodLine(nm.name, nm, pm)
-				if cp.showContainers {
-					containerMetrics := pm.getSortedContainerMetrics(cp.sortBy)
+				if cp.cr.ShowContainers {
+					containerMetrics := pm.getSortedContainerMetrics(cp.cr.SortBy)
 					for _, containerMetric := range containerMetrics {
 						cp.printContainerLine(nm.name, nm, pm, containerMetric)
 					}
@@ -146,14 +144,8 @@ func (cp *csvPrinter) Print(outputType string) {
 }
 
 func (cp *csvPrinter) printLine(cl *csvLine) {
-	separator := ","
-	if cp.separator == TSVOutput {
-		separator = "\t"
-	}
-
 	lineItems := cp.getLineItems(cl)
-
-	fmt.Fprintf(cp.file, strings.Join(lineItems[:], separator)+"\n")
+	fmt.Fprintf(cp.file, strings.Join(lineItems[:], cp.separator)+"\n")
 }
 
 func (cp *csvPrinter) getLineItems(cl *csvLine) []string {
@@ -169,14 +161,14 @@ func (cp *csvPrinter) getLineItems(cl *csvLine) []string {
 		lineItems = append(lineItems, CSVStringTerminator+x+CSVStringTerminator)
 	}
 
-	if cp.showContainers || cp.showPods {
-		if cp.showNamespace {
+	if cp.cr.ShowContainers || cp.cr.ShowPods {
+		if cp.cr.ShowNamespace() {
 			lineItems = append(lineItems, CSVStringTerminator+cl.namespace+CSVStringTerminator)
 		}
 		lineItems = append(lineItems, CSVStringTerminator+cl.pod+CSVStringTerminator)
 	}
 
-	if cp.showContainers {
+	if cp.cr.ShowContainers {
 		lineItems = append(lineItems, CSVStringTerminator+cl.container+CSVStringTerminator)
 	}
 
@@ -186,7 +178,7 @@ func (cp *csvPrinter) getLineItems(cl *csvLine) []string {
 	lineItems = append(lineItems, cl.cpuLimits)
 	lineItems = append(lineItems, cl.cpuLimitsPercentage)
 
-	if cp.showUtil {
+	if cp.cr.ShowUtil {
 		lineItems = append(lineItems, cl.cpuUtil)
 		lineItems = append(lineItems, cl.cpuUtilPercentage)
 	}
@@ -197,17 +189,17 @@ func (cp *csvPrinter) getLineItems(cl *csvLine) []string {
 	lineItems = append(lineItems, cl.memoryLimits)
 	lineItems = append(lineItems, cl.memoryLimitsPercentage)
 
-	if cp.showUtil {
+	if cp.cr.ShowUtil {
 		lineItems = append(lineItems, cl.memoryUtil)
 		lineItems = append(lineItems, cl.memoryUtilPercentage)
 	}
 
-	if cp.showPodCount {
+	if cp.cr.ShowPodCount {
 		lineItems = append(lineItems, cl.podCountCurrent)
 		lineItems = append(lineItems, cl.podCountAllocatable)
 	}
 
-	if cp.binpackAnalysis {
+	if cp.cr.BinpackAnalysis {
 		lineItems = append(lineItems, cl.binpack.idleHeadroom)
 		lineItems = append(lineItems, cl.binpack.idleWasteCPU)
 		lineItems = append(lineItems, cl.binpack.idleWasteMEM)

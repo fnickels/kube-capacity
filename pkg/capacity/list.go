@@ -22,6 +22,14 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+type listPrinter struct {
+	cm *clusterMetric
+	cr *DisplayCriteria
+	// Node Label support
+	uniqueGroupByNodeLabels []string
+	uniqueDisplayNodeLabels []string
+}
+
 type listNodeMetric struct {
 	Name            string              `json:"name"`
 	CPU             *listResourceOutput `json:"cpu,omitempty"`
@@ -68,23 +76,12 @@ type listClusterTotals struct {
 	binpackAnalysis binAnalysis         `json:"binpackAnalysis,omitempty"`
 }
 
-type listPrinter struct {
-	cm                      *clusterMetric
-	showPods                bool
-	showContainers          bool
-	showUtil                bool
-	showPodCount            bool
-	showAllNodeLabels       bool
-	showDebug               bool
-	displayNodeLabels       string
-	groupByNodeLabels       string
-	sortBy                  string
-	binpackAnalysis         bool
-	uniqueGroupByNodeLabels []string
-	uniqueDisplayNodeLabels []string
-}
+func PrintList(cm *clusterMetric, cr *DisplayCriteria) {
 
-func (lp listPrinter) Print(outputType string) {
+	lp := &listPrinter{
+		cm: cm,
+		cr: cr,
+	}
 
 	var err error
 
@@ -92,7 +89,7 @@ func (lp listPrinter) Print(outputType string) {
 	lp.uniqueGroupByNodeLabels,
 		lp.uniqueDisplayNodeLabels,
 		_,
-		err = processNodeLabelSelections(lp.cm, lp.groupByNodeLabels, lp.displayNodeLabels, false)
+		err = processNodeLabelSelections(lp.cm, lp.cr.GroupByNodeLabels, lp.cr.DisplayNodeLabels, false)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -106,19 +103,20 @@ func (lp listPrinter) Print(outputType string) {
 		fmt.Fprintf(os.Stderr, "Error Marshalling JSON: %v\n", err)
 		os.Exit(1)
 	} else {
-		if outputType == JSONOutput {
+		if lp.cr.OutputFormat == JSONOutput {
 			fmt.Fprintf(os.Stdout, "%s", jsonRaw)
 		} else {
 			// This is a strange approach, but the k8s YAML package
 			// already marshalls to JSON before converting to YAML,
 			// this just allows us to follow the same code path.
 			yamlRaw, err := yaml.JSONToYAML(jsonRaw)
+
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error Converting JSON to Yaml: %v\n", err)
 				os.Exit(1)
-			} else {
-				fmt.Fprintf(os.Stdout, "%s", yamlRaw)
 			}
+
+			fmt.Fprintf(os.Stdout, "%s", yamlRaw)
 		}
 	}
 }
@@ -131,22 +129,22 @@ func (lp *listPrinter) buildListClusterMetrics() listClusterMetrics {
 		Memory: lp.buildListResourceOutput(lp.cm.memory),
 	}
 
-	if lp.showPodCount {
+	if lp.cr.ShowPodCount {
 		response.ClusterTotals.PodCount = lp.cm.podCount.podCountString()
 	}
 
-	if lp.binpackAnalysis {
+	if lp.cr.BinpackAnalysis {
 		response.ClusterTotals.binpackAnalysis = lp.cm.getBinAnalysis()
 	}
 
-	for _, nodeMetric := range lp.cm.getSortedNodeMetrics(lp.uniqueGroupByNodeLabels, lp.sortBy) {
+	for _, nodeMetric := range lp.cm.getSortedNodeMetrics(lp.uniqueGroupByNodeLabels, lp.cr.SortBy) {
 		var node listNodeMetric
 		node.Name = nodeMetric.name
 		node.CPU = lp.buildListResourceOutput(nodeMetric.cpu)
 		node.Memory = lp.buildListResourceOutput(nodeMetric.memory)
 
 		// Node Labels
-		if lp.showAllNodeLabels {
+		if lp.cr.ShowAllNodeLabels {
 			node.NodeLabels = nodeMetric.nodeLabels
 		} else {
 			mapOfNodeLabels := map[string]string{}
@@ -156,28 +154,28 @@ func (lp *listPrinter) buildListClusterMetrics() listClusterMetrics {
 			node.NodeLabels = mapOfNodeLabels
 		}
 
-		if lp.showPodCount {
+		if lp.cr.ShowPodCount {
 			node.PodCount = nodeMetric.podCount.podCountString()
 		}
 
-		if lp.binpackAnalysis {
+		if lp.cr.BinpackAnalysis {
 			node.binpackAnalysis = nodeMetric.getBinAnalysis()
 		}
 
-		if lp.showPods || lp.showContainers {
-			for _, podMetric := range nodeMetric.getSortedPodMetrics(lp.sortBy) {
+		if lp.cr.ShowPods || lp.cr.ShowContainers {
+			for _, podMetric := range nodeMetric.getSortedPodMetrics(lp.cr.SortBy) {
 				var pod listPod
 				pod.Name = podMetric.name
 				pod.Namespace = podMetric.namespace
 				pod.CPU = lp.buildListResourceOutput(podMetric.cpu)
 				pod.Memory = lp.buildListResourceOutput(podMetric.memory)
 
-				if lp.binpackAnalysis {
+				if lp.cr.BinpackAnalysis {
 					pod.binpackAnalysis = podMetric.getBinAnalysis()
 				}
 
-				if lp.showContainers {
-					for _, containerMetric := range podMetric.getSortedContainerMetrics(lp.sortBy) {
+				if lp.cr.ShowContainers {
+					for _, containerMetric := range podMetric.getSortedContainerMetrics(lp.cr.SortBy) {
 						pod.Containers = append(pod.Containers, listContainer{
 							Name:   containerMetric.name,
 							Memory: lp.buildListResourceOutput(containerMetric.memory),
@@ -205,7 +203,7 @@ func (lp *listPrinter) buildListResourceOutput(item *resourceMetric) *listResour
 		LimitsPct:   percentCalculator(item.limit),
 	}
 
-	if lp.showUtil {
+	if lp.cr.ShowUtil {
 		out.Utilization = valueCalculator(item.utilization)
 		out.UtilizationPct = percentCalculator(item.utilization)
 	}

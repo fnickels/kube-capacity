@@ -62,9 +62,9 @@ type clusterMetric struct {
 	memory               *resourceMetric
 	eni                  *resourceMetric
 	nodeMetrics          map[string]*nodeMetric
+	podMetrics           map[string]*podMetric
 	podCount             *podCount
 	rawPodList           []corev1.Pod
-	rawPmList            []v1beta1.PodMetrics
 	podAppSelectorLabels []string
 	rawPodAppList        []podAppSummary
 }
@@ -82,6 +82,7 @@ type nodeMetric struct {
 type podMetric struct {
 	name             string
 	namespace        string
+	node             string
 	cpu              *resourceMetric
 	memory           *resourceMetric
 	eni              *resourceMetric
@@ -106,6 +107,9 @@ type podAppSummary struct {
 	podCount          int64
 	specialNoLabelSet bool
 	Items             []corev1.Pod
+	cpu               *resourceMetric
+	memory            *resourceMetric
+	eni               *resourceMetric
 }
 
 type resourceSummary struct {
@@ -123,28 +127,26 @@ type resourceSummary struct {
 }
 
 func buildClusterMetric(podList *corev1.PodList, pmList *v1beta1.PodMetricsList,
-	nodeList *corev1.NodeList, nmList *v1beta1.NodeMetricsList, selectPodLabels string) clusterMetric {
+	nodeList *corev1.NodeList, nmList *v1beta1.NodeMetricsList, cr *DisplayCriteria) clusterMetric {
 
-	rawPmlist := []v1beta1.PodMetrics{}
-	if pmList != nil {
-		rawPmlist = pmList.Items
-	}
+	// get summary list of pods
+	appList, appKeys := getPodAppsList(podList, cr.SelectPodLabels)
 
-	appList, appKeys := getPodAppsList(podList, selectPodLabels)
-
+	// initialize cluster metric
 	cm := clusterMetric{
 		cpu:         &resourceMetric{resourceType: CPU},
 		memory:      &resourceMetric{resourceType: Memory},
 		eni:         &resourceMetric{resourceType: ENI},
 		nodeMetrics: map[string]*nodeMetric{},
+		podMetrics:  map[string]*podMetric{},
 		podCount:    &podCount{},
 		// pod summary elements
 		rawPodList:           podList.Items,
-		rawPmList:            rawPmlist,
 		podAppSelectorLabels: appKeys,
 		rawPodAppList:        appList,
 	}
 
+	// Iterate over nodes and establish node allocation limits and pod count
 	var totalPodAllocatable int64
 	var totalPodCurrent int64
 	for _, node := range nodeList.Items {
@@ -154,8 +156,10 @@ func buildClusterMetric(podList *corev1.PodList, pmList *v1beta1.PodMetricsList,
 				tmpPodCount++
 			}
 		}
+		// update cluster pod count and allocation
 		totalPodCurrent += tmpPodCount
 		totalPodAllocatable += node.Status.Allocatable.Pods().Value()
+		// establish resource allocation values
 		cm.nodeMetrics[node.Name] = &nodeMetric{
 			name: node.Name,
 			cpu: &resourceMetric{
@@ -182,6 +186,7 @@ func buildClusterMetric(podList *corev1.PodList, pmList *v1beta1.PodMetricsList,
 	cm.podCount.current = totalPodCurrent
 	cm.podCount.allocatable = totalPodAllocatable
 
+	// add resource utilization values if specified
 	if nmList != nil {
 		for _, nm := range nmList.Items {
 			cm.nodeMetrics[nm.Name].cpu.utilization = nm.Usage[CPU]
@@ -190,6 +195,7 @@ func buildClusterMetric(podList *corev1.PodList, pmList *v1beta1.PodMetricsList,
 		}
 	}
 
+	// build pod metrics list if utilization is specified
 	podMetrics := map[string]v1beta1.PodMetrics{}
 	if pmList != nil {
 		for _, pm := range pmList.Items {
@@ -197,19 +203,47 @@ func buildClusterMetric(podList *corev1.PodList, pmList *v1beta1.PodMetricsList,
 		}
 	}
 
+	// Iterate over pods, for active pods update cluster metrics
 	for _, pod := range podList.Items {
 		if pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
 			cm.addPodMetric(&pod, podMetrics[fmt.Sprintf("%s-%s", pod.GetNamespace(), pod.GetName())])
 		}
 	}
 
+	// Iterate over nodes
 	for _, node := range nodeList.Items {
 		if nm, ok := cm.nodeMetrics[node.Name]; ok {
+			// update aggregate cluster metrics from all nodes
 			cm.addNodeMetric(nm)
 			// When namespace filtering is configured, we want to sum pod
 			// utilization instead of relying on node util.
 			if nmList == nil {
 				nm.addPodUtilization()
+			}
+		}
+	}
+
+	// update applist summary metrics
+	for _, app := range appList {
+		for _, pod := range app.Items {
+
+			req, limit := resourcehelper.PodRequestsAndLimits(&pod)
+
+			app.cpu.request.Add(req[CPU])
+			app.cpu.limit.Add(limit[CPU])
+
+			app.memory.request.Add(req[Memory])
+			app.memory.limit.Add(limit[Memory])
+
+			app.eni.request.Add(req[ENI])
+			app.eni.limit.Add(limit[ENI])
+
+			if pmList != nil {
+				for _, container := range podMetrics[fmt.Sprintf("%s-%s", pod.GetNamespace(), pod.GetName())].Containers {
+					app.cpu.utilization.Add(container.Usage[CPU])
+					app.memory.utilization.Add(container.Usage[Memory])
+					app.eni.utilization.Add(container.Usage[ENI])
+				}
 			}
 		}
 	}
@@ -229,11 +263,14 @@ func (cm *clusterMetric) addPodMetric(pod *corev1.Pod, podMetrics v1beta1.PodMet
 	req, limit := resourcehelper.PodRequestsAndLimits(pod)
 	key := fmt.Sprintf("%s-%s", pod.Namespace, pod.Name)
 
+	// get pointer to node's metrics
 	nm := cm.nodeMetrics[pod.Spec.NodeName]
 
+	// build pod's metrics object with limits and requests
 	pm := &podMetric{
 		name:      pod.Name,
 		namespace: pod.Namespace,
+		node:      pod.Spec.NodeName,
 		cpu: &resourceMetric{
 			resourceType: CPU,
 			request:      req[CPU],
@@ -252,6 +289,7 @@ func (cm *clusterMetric) addPodMetric(pod *corev1.Pod, podMetrics v1beta1.PodMet
 		containerMetrics: map[string]*containerMetric{},
 	}
 
+	// grab Container limits and requests for each container in the pod
 	for _, container := range pod.Spec.Containers {
 		pm.containerMetrics[container.Name] = &containerMetric{
 			name: container.Name,
@@ -276,10 +314,16 @@ func (cm *clusterMetric) addPodMetric(pod *corev1.Pod, podMetrics v1beta1.PodMet
 		}
 	}
 
+	// update node's specific pod metrics
 	if nm != nil {
+		pm.cpu.allocatable = nm.cpu.allocatable
+		pm.memory.allocatable = nm.memory.allocatable
+		pm.eni.allocatable = nm.eni.allocatable
+
 		nm.podMetrics[key] = pm
-		nm.podMetrics[key].cpu.allocatable = nm.cpu.allocatable
-		nm.podMetrics[key].memory.allocatable = nm.memory.allocatable
+
+		// also add to cluster wide list
+		cm.podMetrics[key] = pm
 
 		nm.cpu.request.Add(req[CPU])
 		nm.cpu.limit.Add(limit[CPU])
@@ -289,6 +333,7 @@ func (cm *clusterMetric) addPodMetric(pod *corev1.Pod, podMetrics v1beta1.PodMet
 		nm.eni.limit.Add(limit[ENI])
 	}
 
+	// update pod's utilization data from the container utilization data
 	for _, container := range podMetrics.Containers {
 		cm := pm.containerMetrics[container.Name]
 		if cm != nil {
@@ -463,16 +508,16 @@ func (pm *podMetric) getSortedContainerMetrics(sortBy string) []*containerMetric
 	return sortedContainerMetrics
 }
 
-func (rm *resourceMetric) requestString(availableFormat bool) string {
-	return rm.resourceString(rm.request, availableFormat)
+func (rm *resourceMetric) requestString(cr *DisplayCriteria) string {
+	return rm.resourceString(rm.request, cr)
 }
 
-func (rm *resourceMetric) limitString(availableFormat bool) string {
-	return rm.resourceString(rm.limit, availableFormat)
+func (rm *resourceMetric) limitString(cr *DisplayCriteria) string {
+	return rm.resourceString(rm.limit, cr)
 }
 
-func (rm *resourceMetric) utilString(availableFormat bool) string {
-	return rm.resourceString(rm.utilization, availableFormat)
+func (rm *resourceMetric) utilString(cr *DisplayCriteria) string {
+	return rm.resourceString(rm.utilization, cr)
 }
 
 // podCountString returns the string representation of podCount struct, example: "15/110 (12%)"
@@ -481,10 +526,17 @@ func (pc *podCount) podCountString() string {
 		percentRawFunction(float64(pc.current), float64(pc.allocatable)))
 }
 
-func (rm *resourceMetric) resourceString(r resource.Quantity, availableFormat bool) string {
-	if availableFormat {
+func (rm *resourceMetric) resourceString(r resource.Quantity, cr *DisplayCriteria) string {
+
+	// in podsummary do not show % if no allocation is present
+	if cr.ShowPodSummary && rm.allocatable.Value() == 0 {
+		return fmt.Sprintf("%s", rm.valueFunction()(r))
+	}
+
+	if cr.AvailableFormat {
 		return fmt.Sprintf("%s/%s", rm.valueAvailableFunction()(r), rm.valueFunction()(rm.allocatable))
 	}
+
 	return fmt.Sprintf("%s (%v)", rm.valueFunction()(r), rm.percentFunction()(r))
 }
 
@@ -663,6 +715,9 @@ func getPodAppsList(podList *corev1.PodList, selectPodLabels string) (result []p
 							podCount:          1,
 							specialNoLabelSet: false,
 							Items:             []corev1.Pod{pod},
+							cpu:               &resourceMetric{resourceType: CPU},
+							memory:            &resourceMetric{resourceType: Memory},
+							eni:               &resourceMetric{resourceType: ENI},
 						})
 					}
 					break
@@ -682,6 +737,9 @@ func getPodAppsList(podList *corev1.PodList, selectPodLabels string) (result []p
 			podCount:          noLabelCount,
 			specialNoLabelSet: true,
 			Items:             noLabelPods,
+			cpu:               &resourceMetric{resourceType: CPU},
+			memory:            &resourceMetric{resourceType: Memory},
+			eni:               &resourceMetric{resourceType: ENI},
 		})
 	}
 

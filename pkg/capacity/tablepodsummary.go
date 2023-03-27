@@ -21,19 +21,8 @@ const (
 
 type tablePodPrinter struct {
 	cm                         *clusterMetric
-	showPods                   bool
-	showUtil                   bool
-	showPodCount               bool
-	showContainers             bool
-	showNamespace              bool
-	showAllNodeLabels          bool
-	showDebug                  bool
-	displayNodeLabels          string
-	groupByNodeLabels          string
-	sortBy                     string
+	cr                         *DisplayCriteria
 	w                          *tabwriter.Writer
-	availableFormat            bool
-	binpackAnalysis            bool
 	uniquePodAppSelectorLabels []string
 	uniquePodLabels            []string
 	uniqueGroupByNodeLabels    []string
@@ -45,6 +34,8 @@ type tablePodLine struct {
 	appNameLabel    string
 	namespace       string
 	pod             string
+	podStatus       string
+	node            string
 	container       string
 	containerType   ContainerClassificationType
 	cpuRequests     string
@@ -68,6 +59,8 @@ var tablePodHeaderStrings = tablePodLine{
 	appNameLabel:    "APP LABEL",
 	namespace:       "NAMESPACE",
 	pod:             "POD",
+	podStatus:       "POD STATUS",
+	node:            "NODE",
 	container:       "CONTAINER",
 	containerType:   "CONTAINER TYPE",
 	cpuRequests:     "CPU REQUESTS",
@@ -87,7 +80,13 @@ var tablePodHeaderStrings = tablePodLine{
 	binpack:         binHeaders,
 }
 
-func (pp *tablePodPrinter) Print() {
+func PrintTablePodSummary(cm *clusterMetric, cr *DisplayCriteria) {
+
+	pp := &tablePodPrinter{
+		cm: cm,
+		cr: cr,
+		w:  new(tabwriter.Writer),
+	}
 
 	pp.w.Init(os.Stdout, 0, 8, 2, ' ', 0)
 
@@ -117,12 +116,15 @@ func (pp *tablePodPrinter) Print() {
 
 		pp.printPodAppLine(&pal)
 
-		if pp.showPods || pp.showContainers {
+		if cr.ShowPods || cr.ShowContainers {
 			for _, pl := range pal.Items {
 
-				pp.printPodLine(&pl, &pal)
+				key := fmt.Sprintf("%s-%s", pl.Namespace, pl.Name)
+				pm := cm.podMetrics[key]
 
-				if pp.showContainers {
+				pp.printPodLine(&pl, pm, &pal)
+
+				if cr.ShowContainers {
 					for _, cc := range pl.Spec.InitContainers {
 						pp.printContainerLine(&pl, &pal, &cc, InitContainerClassification)
 					}
@@ -149,7 +151,7 @@ func (pp *tablePodPrinter) Print() {
 
 func (pp *tablePodPrinter) printLine(tl *tablePodLine) {
 	lineItems := pp.getLineItems(tl)
-	if pp.showDebug {
+	if pp.cr.ShowDebug {
 		fmt.Fprintf(os.Stdout, "LineItems: %v\n", lineItems)
 	}
 	fmt.Fprintf(pp.w, strings.Join(lineItems[:], "\t ")+"\n")
@@ -159,20 +161,22 @@ func (pp *tablePodPrinter) getLineItems(tl *tablePodLine) []string {
 
 	lineItems := []string{tl.appNameLabel}
 
-	if pp.showNamespace {
+	if pp.cr.ShowNamespace() {
 		lineItems = append(lineItems, tl.namespace)
 	}
 
-	if pp.showContainers || pp.showPods {
+	if pp.cr.ShowContainers || pp.cr.ShowPods {
 		lineItems = append(lineItems, tl.pod)
+		lineItems = append(lineItems, tl.podStatus)
+		lineItems = append(lineItems, tl.node)
 	}
 
-	if pp.showContainers {
+	if pp.cr.ShowContainers {
 		lineItems = append(lineItems, tl.container)
 		lineItems = append(lineItems, string(tl.containerType))
 	}
 
-	if pp.showPodCount {
+	if pp.cr.ShowPodCount {
 		lineItems = append(lineItems, tl.podCount)
 	}
 
@@ -187,29 +191,36 @@ func (pp *tablePodPrinter) getLineItems(tl *tablePodLine) []string {
 	//		lineItems = append(lineItems, x)
 	//	}
 
-	//	lineItems = append(lineItems, tl.cpuRequests)
-	//	lineItems = append(lineItems, tl.cpuLimits)
+	lineItems = append(lineItems, tl.cpuRequests)
+	lineItems = append(lineItems, tl.cpuLimits)
+
+	if pp.cr.ShowUtil {
+		lineItems = append(lineItems, tl.cpuUtil)
+	}
+
+	lineItems = append(lineItems, tl.memoryRequests)
+	lineItems = append(lineItems, tl.memoryLimits)
+
+	if pp.cr.ShowUtil {
+		lineItems = append(lineItems, tl.memoryUtil)
+	}
+
+	// lineItems = append(lineItems, tl.eniRequests)
+	// lineItems = append(lineItems, tl.eniLimits)
 	//
-	//	if pp.showUtil {
-	//		lineItems = append(lineItems, tl.cpuUtil)
-	//	}
-	//
-	//	lineItems = append(lineItems, tl.memoryRequests)
-	//	lineItems = append(lineItems, tl.memoryLimits)
-	//
-	//	if pp.showUtil {
-	//		lineItems = append(lineItems, tl.memoryUtil)
-	//	}
-	//
-	//	if pp.binpackAnalysis {
-	//		lineItems = append(lineItems, tl.binpack.idleHeadroom)
-	//		lineItems = append(lineItems, tl.binpack.idleWasteCPU)
-	//		lineItems = append(lineItems, tl.binpack.idleWasteMEM)
-	//		lineItems = append(lineItems, tl.binpack.idleWastePODS)
-	//		lineItems = append(lineItems, tl.binpack.binpackRequestRatio)
-	//		lineItems = append(lineItems, tl.binpack.binpackLimitRatio)
-	//		lineItems = append(lineItems, tl.binpack.binpackUtilizationRatio)
-	//	}
+	// if pp.cr.ShowUtil {
+	// 	lineItems = append(lineItems, tl.eniUtil)
+	// }
+
+	if pp.cr.BinpackAnalysis {
+		//	lineItems = append(lineItems, tl.binpack.idleHeadroom)
+		//	lineItems = append(lineItems, tl.binpack.idleWasteCPU)
+		//	lineItems = append(lineItems, tl.binpack.idleWasteMEM)
+		//	lineItems = append(lineItems, tl.binpack.idleWastePODS)
+		lineItems = append(lineItems, tl.binpack.binpackRequestRatio)
+		lineItems = append(lineItems, tl.binpack.binpackLimitRatio)
+		lineItems = append(lineItems, tl.binpack.binpackUtilizationRatio)
+	}
 
 	// if Pod Labels have been specified to be displayed add them here
 	for _, x := range tl.podLabels {
@@ -228,24 +239,28 @@ func (pp *tablePodPrinter) printClusterLine() {
 	}
 
 	pp.printLine(&tablePodLine{
-		appNameLabel:  VoidValue,
-		namespace:     VoidValue,
-		pod:           VoidValue,
-		container:     VoidValue,
-		containerType: VoidContainerClassification,
-		podCount:      stringFormatInt64(pcSum),
-		podLabels:     sliceFilledWithString(len(pp.uniquePodLabels), VoidValue),
-		//		cpuRequests:     pp.cm.cpu.requestString(pp.availableFormat),
-		//		cpuLimits:       pp.cm.cpu.limitString(pp.availableFormat),
-		//		cpuUtil:         pp.cm.cpu.utilString(pp.availableFormat),
-		//		memoryRequests:  pp.cm.memory.requestString(pp.availableFormat),
-		//		memoryLimits:    pp.cm.memory.limitString(pp.availableFormat),
-		//		memoryUtil:      pp.cm.memory.utilString(pp.availableFormat),
-		//		podCount:        pp.cm.podCount.podCountString(),
+		appNameLabel:   VoidValue,
+		namespace:      VoidValue,
+		pod:            VoidValue,
+		podStatus:      VoidValue,
+		node:           VoidValue,
+		container:      VoidValue,
+		containerType:  VoidContainerClassification,
+		podCount:       stringFormatInt64(pcSum),
+		podLabels:      sliceFilledWithString(len(pp.uniquePodLabels), VoidValue),
+		cpuRequests:    pp.cm.cpu.requestString(pp.cr),
+		cpuLimits:      pp.cm.cpu.limitString(pp.cr),
+		cpuUtil:        pp.cm.cpu.utilString(pp.cr),
+		memoryRequests: pp.cm.memory.requestString(pp.cr),
+		memoryLimits:   pp.cm.memory.limitString(pp.cr),
+		memoryUtil:     pp.cm.memory.utilString(pp.cr),
+		eniRequests:    pp.cm.eni.requestString(pp.cr),
+		eniLimits:      pp.cm.eni.limitString(pp.cr),
+		eniUtil:        pp.cm.eni.utilString(pp.cr),
 		//		groupByLabels:   setMultipleVoids(len(pp.uniqueGroupByNodeLabels)),
 		//		displayLabels:   setMultipleVoids(len(pp.uniqueDisplayNodeLabels)),
 		//		remainderLabels: setMultipleVoids(len(pp.uniqueRemainderNodeLabels)),
-		//		binpack:         pp.cm.getBinAnalysis(),
+		binpack: pp.cm.getBinAnalysis(),
 	})
 }
 
@@ -261,6 +276,7 @@ func (pp *tablePodPrinter) printPodAppLine(pal *podAppSummary) {
 				listOfValues[labelValue] = true
 			}
 		}
+
 		values := make([]string, len(listOfValues))
 		j := 0
 		for k := range listOfValues {
@@ -271,32 +287,45 @@ func (pp *tablePodPrinter) printPodAppLine(pal *podAppSummary) {
 	}
 
 	pp.printLine(&tablePodLine{
-		appNameLabel:  pal.setAppLabel(),
-		namespace:     pal.getNamespacesUsed(),
-		pod:           VoidValue,
-		container:     VoidValue,
-		containerType: VoidContainerClassification,
-		podCount:      stringFormatInt64(pal.podCount),
-		podLabels:     labelList,
-		//		cpuRequests:     p.cpu.requestString(pp.availableFormat),
-		//		cpuLimits:       pm.cpu.limitString(pp.availableFormat),
-		//		cpuUtil:         pm.cpu.utilString(pp.availableFormat),
-		//		memoryRequests:  pm.memory.requestString(pp.availableFormat),
-		//		memoryLimits:    pm.memory.limitString(pp.availableFormat),
-		//		memoryUtil:      pm.memory.utilString(pp.availableFormat),
+		appNameLabel:   pal.setAppLabel(),
+		namespace:      pal.getNamespacesUsed(),
+		pod:            VoidValue,
+		podStatus:      VoidValue,
+		node:           VoidValue,
+		container:      VoidValue,
+		containerType:  VoidContainerClassification,
+		podCount:       stringFormatInt64(pal.podCount),
+		podLabels:      labelList,
+		cpuRequests:    pal.cpu.requestString(pp.cr),
+		cpuLimits:      pal.cpu.limitString(pp.cr),
+		cpuUtil:        pal.cpu.utilString(pp.cr),
+		memoryRequests: pal.memory.requestString(pp.cr),
+		memoryLimits:   pal.memory.limitString(pp.cr),
+		memoryUtil:     pal.memory.utilString(pp.cr),
+		eniRequests:    pal.eni.requestString(pp.cr),
+		eniLimits:      pal.eni.limitString(pp.cr),
+		eniUtil:        pal.eni.utilString(pp.cr),
 		//		groupByLabels:   setNodeLabels(pp.uniqueGroupByNodeLabels, nm),
 		//		displayLabels:   setNodeLabels(pp.uniqueDisplayNodeLabels, nm),
 		//		remainderLabels: setNodeLabels(pp.uniqueRemainderNodeLabels, nm),
-		// binpack: pl.getBinAnalysis(),
+		// binpack: pal.getBinAnalysis(),
 	})
 
 }
 
-func (pp *tablePodPrinter) printPodLine(pl *corev1.Pod, pal *podAppSummary) {
+func (pp *tablePodPrinter) printPodLine(pl *corev1.Pod, pm *podMetric, pal *podAppSummary) {
 
 	req, limit := resourcehelper.PodRequestsAndLimits(pl)
 
-	if pp.showDebug {
+	if pp.cr.ShowDebug && pm == nil {
+		fmt.Fprintf(os.Stdout, "pod : %v-%v\n", pl.GetNamespace(), pl.GetName())
+		fmt.Fprintf(os.Stdout, "pod : %v\n", pl)
+		fmt.Fprintf(os.Stdout, "pod : %v\n", pl.Status)
+		fmt.Fprintf(os.Stdout, "pod : %v\n", pl.Status.Phase)
+		fmt.Fprintf(os.Stdout, "pod metrics: %v\n", pm)
+		if pm != nil {
+			fmt.Fprintf(os.Stdout, "pod metrics Node: %v\n", pm.node)
+		}
 		fmt.Fprintf(os.Stdout, "Request : %v\n", req)
 		fmt.Fprintf(os.Stdout, "Limit   : %v\n", limit)
 		if pl.Spec.Overhead != nil {
@@ -310,24 +339,44 @@ func (pp *tablePodPrinter) printPodLine(pl *corev1.Pod, pal *podAppSummary) {
 		labelList[i] = pl.Labels[labelName]
 	}
 
+	a1 := ""
+	a2 := ""
+	a3 := ""
+	a4 := ""
+	a5 := ""
+	a6 := ""
+	nodename := ""
+
+	if pm != nil {
+		a1 = pm.cpu.requestString(pp.cr)
+		a2 = pm.cpu.limitString(pp.cr)
+		a3 = pm.cpu.utilString(pp.cr)
+		a4 = pm.memory.requestString(pp.cr)
+		a5 = pm.memory.limitString(pp.cr)
+		a6 = pm.memory.utilString(pp.cr)
+		nodename = pm.node
+	}
+
 	pp.printLine(&tablePodLine{
-		appNameLabel:  pal.setAppLabel(),
-		namespace:     pl.GetNamespace(),
-		pod:           pl.GetName(),
-		container:     VoidValue,
-		containerType: VoidContainerClassification,
-		podCount:      stringFormatInt64(1),
-		podLabels:     labelList,
-		//		cpuRequests:     p.cpu.requestString(pp.availableFormat),
-		//		cpuLimits:       pm.cpu.limitString(pp.availableFormat),
-		//		cpuUtil:         pm.cpu.utilString(pp.availableFormat),
-		//		memoryRequests:  pm.memory.requestString(pp.availableFormat),
-		//		memoryLimits:    pm.memory.limitString(pp.availableFormat),
-		//		memoryUtil:      pm.memory.utilString(pp.availableFormat),
+		appNameLabel:   pal.setAppLabel(),
+		namespace:      pl.GetNamespace(),
+		pod:            pl.GetName(),
+		podStatus:      string(pl.Status.Phase),
+		node:           nodename,
+		container:      VoidValue,
+		containerType:  VoidContainerClassification,
+		podCount:       stringFormatInt64(1),
+		podLabels:      labelList,
+		cpuRequests:    a1,
+		cpuLimits:      a2,
+		cpuUtil:        a3,
+		memoryRequests: a4,
+		memoryLimits:   a5,
+		memoryUtil:     a6,
 		//		groupByLabels:   setNodeLabels(pp.uniqueGroupByNodeLabels, nm),
 		//		displayLabels:   setNodeLabels(pp.uniqueDisplayNodeLabels, nm),
 		//		remainderLabels: setNodeLabels(pp.uniqueRemainderNodeLabels, nm),
-		// binpack: pl.getBinAnalysis(),
+		//binpack: pl.getBinAnalysis(),
 	})
 
 }

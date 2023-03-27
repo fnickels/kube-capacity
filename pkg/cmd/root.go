@@ -22,30 +22,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	showContainers    bool
-	showPods          bool
-	showUtil          bool
-	showPodCount      bool
-	showDebug         bool
-	displayNodeLabels string
-	groupByNodeLabels string
-	showAllNodeLabels bool
-	showAllPodLabels  bool
-	selectPodLabels   string
-	podLabels         string
-	nodeLabels        string
-	namespaceLabels   string
-	namespace         string
-	kubeContext       string
-	kubeConfig        string
-	outputFormat      string
-	sortBy            string
-	availableFormat   bool
-	binpackAnalysis   bool
-	showPodSummary    bool
-)
-
 var criteria capacity.DisplayCriteria
 
 var rootCmd = &cobra.Command{
@@ -53,74 +29,73 @@ var rootCmd = &cobra.Command{
 	Short: "kube-capacity provides an overview of the resource requests, limits, and utilization in a Kubernetes cluster.",
 	Long:  "kube-capacity provides an overview of the resource requests, limits, and utilization in a Kubernetes cluster.",
 	Run: func(cmd *cobra.Command, args []string) {
+
 		if err := cmd.ParseFlags(args); err != nil {
 			fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
 			os.Exit(1)
 		}
 
-		if err := validateOutputType(outputFormat); err != nil {
+		if err := validateOutputType(criteria.OutputFormat); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
 
-		if showContainers {
-			showPods = true
+		if criteria.ShowContainers {
+			criteria.ShowPods = true
 		}
 
-		capacity.FetchAndPrint(
-			showContainers, showPods, showUtil, showPodCount, showAllNodeLabels,
-			availableFormat, binpackAnalysis, showPodSummary, showDebug,
-			podLabels, selectPodLabels, nodeLabels, displayNodeLabels, groupByNodeLabels,
-			namespaceLabels, namespace, kubeContext, kubeConfig, outputFormat, sortBy)
+		capacity.FetchAndPrint(&criteria)
 	},
 }
 
 func init() {
-	criteria.showDebug = true
+	criteria.ShowDebug = true
 
-	rootCmd.PersistentFlags().BoolVarP(&showContainers,
+	rootCmd.PersistentFlags().BoolVarP(&criteria.ShowContainers,
 		"containers", "c", false, "includes containers in output (forces --pods)")
-	rootCmd.PersistentFlags().BoolVarP(&showPods,
+	rootCmd.PersistentFlags().BoolVarP(&criteria.ShowPods,
 		"pods", "p", false, "includes pods in output")
-	rootCmd.PersistentFlags().BoolVarP(&showUtil,
+	rootCmd.PersistentFlags().BoolVarP(&criteria.ShowUtil,
 		"util", "u", false, "includes resource utilization in output")
-	rootCmd.PersistentFlags().BoolVarP(&showPodCount,
+	rootCmd.PersistentFlags().BoolVarP(&criteria.ShowPodCount,
 		"pod-count", "", false, "includes pod count per node in output")
-	rootCmd.PersistentFlags().BoolVarP(&availableFormat,
+	rootCmd.PersistentFlags().BoolVarP(&criteria.AvailableFormat,
 		"available", "a", false, "includes quantity available instead of percentage used (ignored with csv or tsv output types)")
-	rootCmd.PersistentFlags().StringVarP(&podLabels,
-		"pod-labels", "l", "", "labels to filter pods with")
-	rootCmd.PersistentFlags().StringVarP(&selectPodLabels,
+	rootCmd.PersistentFlags().StringVarP(&criteria.SelectPodLabels,
 		"select-pod-labels", "", "", "comma separated list of pod label(s) to identify pod families (default: '"+capacity.PodAppNameLabelDefaultSelector+"')")
-	rootCmd.PersistentFlags().StringVarP(&displayNodeLabels,
+	rootCmd.PersistentFlags().StringVarP(&criteria.DisplayNodeLabels,
 		"display-node-labels", "", "", "comma separated list of node label(s) to display")
-	rootCmd.PersistentFlags().StringVarP(&groupByNodeLabels,
+	rootCmd.PersistentFlags().StringVarP(&criteria.GroupByNodeLabels,
 		"group-by-node-labels", "", "", "comma separated list of node label(s) to group by")
-	rootCmd.PersistentFlags().BoolVarP(&showAllNodeLabels,
+	rootCmd.PersistentFlags().BoolVarP(&criteria.ShowAllNodeLabels,
 		"show-all-node-labels", "", false, "show all node labels")
-	rootCmd.PersistentFlags().BoolVarP(&showAllPodLabels,
+	rootCmd.PersistentFlags().BoolVarP(&criteria.ShowAllPodLabels,
 		"show-all-pod-labels", "", false, "show all pod labels")
-	rootCmd.PersistentFlags().StringVarP(&nodeLabels,
+
+	rootCmd.PersistentFlags().StringVarP(&criteria.Filters.PodLabels,
+		"pod-labels", "l", "", "labels to filter pods with")
+	rootCmd.PersistentFlags().StringVarP(&criteria.Filters.NodeLabels,
 		"node-labels", "", "", "labels to filter nodes with")
-	rootCmd.PersistentFlags().StringVarP(&namespaceLabels,
+	rootCmd.PersistentFlags().StringVarP(&criteria.Filters.NamespaceLabels,
 		"namespace-labels", "", "", "labels to filter namespaces with")
-	rootCmd.PersistentFlags().BoolVarP(&binpackAnalysis,
-		"binpack-analysis", "b", false, "add node binpack analysis fields")
-	rootCmd.PersistentFlags().BoolVarP(&showPodSummary,
-		"pod-summary", "", false, "generate alternate report of pods")
-	rootCmd.PersistentFlags().BoolVarP(&showDebug,
-		"debug", "d", false, "Show debug data")
-	rootCmd.PersistentFlags().StringVarP(&namespace,
+	rootCmd.PersistentFlags().StringVarP(&criteria.Filters.Namespace,
 		"namespace", "n", "", "only include pods from this namespace")
-	rootCmd.PersistentFlags().StringVarP(&kubeContext,
+
+	rootCmd.PersistentFlags().BoolVarP(&criteria.BinpackAnalysis,
+		"binpack-analysis", "b", false, "add node binpack analysis fields")
+	rootCmd.PersistentFlags().BoolVarP(&criteria.ShowPodSummary,
+		"pod-summary", "", false, "generate alternate report of pods")
+	rootCmd.PersistentFlags().BoolVarP(&criteria.ShowDebug,
+		"debug", "d", false, "Show debug data")
+	rootCmd.PersistentFlags().StringVarP(&criteria.KubeContext,
 		"context", "", "", "context to use for Kubernetes config")
-	rootCmd.PersistentFlags().StringVarP(&kubeConfig,
+	rootCmd.PersistentFlags().StringVarP(&criteria.KubeConfig,
 		"kubeconfig", "", "", "kubeconfig file to use for Kubernetes config")
-	rootCmd.PersistentFlags().StringVarP(&sortBy,
+	rootCmd.PersistentFlags().StringVarP(&criteria.SortBy,
 		"sort", "", "name",
 		fmt.Sprintf("attribute to sort results by (supports: %v)", capacity.SupportedSortAttributes))
 
-	rootCmd.PersistentFlags().StringVarP(&outputFormat,
+	rootCmd.PersistentFlags().StringVarP(&criteria.OutputFormat,
 		"output", "o", capacity.TableOutput,
 		fmt.Sprintf("output format for information (supports: %v)", capacity.SupportedOutputs()))
 }

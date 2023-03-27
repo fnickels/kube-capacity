@@ -17,110 +17,22 @@ package capacity
 import (
 	"fmt"
 	"os"
-	"text/tabwriter"
 )
 
-const (
-	//TableOutput is the constant value for output type table
-	TableOutput string = "table"
-	//CSVOutput is the constant value for output type csv
-	CSVOutput string = "csv"
-	//TSVOutput is the constant value for output type csv
-	TSVOutput string = "tsv"
-	//JSONOutput is the constant value for output type JSON
-	JSONOutput string = "json"
-	//YAMLOutput is the constant value for output type YAML
-	YAMLOutput string = "yaml"
-)
+func printList(cm *clusterMetric, cr *DisplayCriteria) {
 
-// SupportedOutputs returns a string list of output formats supposed by this package
-func SupportedOutputs() []string {
-	return []string{
-		TableOutput,
-		CSVOutput,
-		TSVOutput,
-		JSONOutput,
-		YAMLOutput,
-	}
-}
-
-func printList(cm *clusterMetric,
-	showContainers, showPods, showUtil, showPodCount, showNamespace, showAllNodeLabels, showDebug bool,
-	displayNodeLabels, groupByNodeLabels,
-	output, sortBy string,
-	availableFormat, binpackAnalysis, showPodSummary bool) {
-
-	if output == JSONOutput || output == YAMLOutput {
-		lp := &listPrinter{
-			cm:                cm,
-			showPods:          showPods,
-			showUtil:          showUtil,
-			showContainers:    showContainers,
-			showPodCount:      showPodCount,
-			showAllNodeLabels: showAllNodeLabels,
-			displayNodeLabels: displayNodeLabels,
-			groupByNodeLabels: groupByNodeLabels,
-			sortBy:            sortBy,
-			binpackAnalysis:   binpackAnalysis,
-			showDebug:         showDebug,
-		}
-		lp.Print(output)
-	} else if output == TableOutput {
-		if showPodSummary {
-			pp := &tablePodPrinter{
-				cm:                cm,
-				showPods:          showPods,
-				showUtil:          showUtil,
-				showPodCount:      showPodCount,
-				showContainers:    showContainers,
-				showNamespace:     showNamespace,
-				showAllNodeLabels: showAllNodeLabels,
-				displayNodeLabels: displayNodeLabels,
-				groupByNodeLabels: groupByNodeLabels,
-				sortBy:            sortBy,
-				w:                 new(tabwriter.Writer),
-				availableFormat:   availableFormat,
-				binpackAnalysis:   binpackAnalysis,
-				showDebug:         showDebug,
-			}
-			pp.Print()
+	if cr.OutputFormat == JSONOutput || cr.OutputFormat == YAMLOutput {
+		PrintList(cm, cr)
+	} else if cr.OutputFormat == TableOutput {
+		if cr.ShowPodSummary {
+			PrintTablePodSummary(cm, cr)
 		} else {
-			tp := &tablePrinter{
-				cm:                cm,
-				showPods:          showPods,
-				showUtil:          showUtil,
-				showPodCount:      showPodCount,
-				showContainers:    showContainers,
-				showNamespace:     showNamespace,
-				showAllNodeLabels: showAllNodeLabels,
-				displayNodeLabels: displayNodeLabels,
-				groupByNodeLabels: groupByNodeLabels,
-				sortBy:            sortBy,
-				w:                 new(tabwriter.Writer),
-				availableFormat:   availableFormat,
-				binpackAnalysis:   binpackAnalysis,
-				showDebug:         showDebug,
-			}
-			tp.Print()
+			PrintTableNodeSummary(cm, cr)
 		}
-	} else if output == CSVOutput || output == TSVOutput {
-		cp := &csvPrinter{
-			cm:                cm,
-			showPods:          showPods,
-			showUtil:          showUtil,
-			showPodCount:      showPodCount,
-			showContainers:    showContainers,
-			showNamespace:     showNamespace,
-			showAllNodeLabels: showAllNodeLabels,
-			displayNodeLabels: displayNodeLabels,
-			groupByNodeLabels: groupByNodeLabels,
-			sortBy:            sortBy,
-			binpackAnalysis:   binpackAnalysis,
-			showDebug:         showDebug,
-		}
-		cp.Print(output)
+	} else if cr.OutputFormat == CSVOutput || cr.OutputFormat == TSVOutput {
+		PrintCSV(cm, cr)
 	} else {
-		fmt.Fprintf(os.Stderr, "Called with an unsupported output type: %s", output)
+		fmt.Fprintf(os.Stderr, "Called with an unsupported output type: %s", cr.OutputFormat)
 		os.Exit(1)
 	}
 }
