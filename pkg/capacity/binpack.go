@@ -56,6 +56,25 @@ func (cm *clusterMetric) getBinAnalysis() binAnalysis {
 	return results
 }
 
+func (pal *podAppSummary) getBinAnalysis() binAnalysis {
+
+	limitRatio := memoryToCPUCoreRatio(pal.memory.limit, pal.cpu.limit)
+	requestsRatio := memoryToCPUCoreRatio(pal.memory.request, pal.cpu.request)
+	utilizationRatio := memoryToCPUCoreRatio(pal.memory.utilization, pal.cpu.utilization)
+
+	var results = binAnalysis{
+		idleHeadroom:            "n/a",
+		idleWasteCPU:            "n/a",
+		idleWasteMEM:            "n/a",
+		idleWastePODS:           "n/a",
+		binpackRequestRatio:     fmt.Sprintf("%d", requestsRatio),
+		binpackLimitRatio:       fmt.Sprintf("%d", limitRatio),
+		binpackUtilizationRatio: fmt.Sprintf("%d", utilizationRatio),
+	}
+
+	return results
+}
+
 func (nm *nodeMetric) getBinAnalysis() binAnalysis {
 
 	cpuReqPercent := nm.cpu.percent(nm.cpu.request)
