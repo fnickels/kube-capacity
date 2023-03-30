@@ -57,6 +57,11 @@ type resourceMetric struct {
 	limit        resource.Quantity
 }
 
+type AnalysisMetrics struct {
+	nodesUnderutilized int
+	nodesUnbalanced    int
+	nodesWellUtilized  int
+}
 type clusterMetric struct {
 	cpu                  *resourceMetric
 	memory               *resourceMetric
@@ -67,6 +72,7 @@ type clusterMetric struct {
 	rawPodList           []corev1.Pod
 	podAppSelectorLabels []string
 	rawPodAppList        []podAppSummary
+	analysis             AnalysisMetrics
 }
 
 type nodeMetric struct {
@@ -77,6 +83,7 @@ type nodeMetric struct {
 	podMetrics map[string]*podMetric
 	podCount   *podCount
 	nodeLabels map[string]string
+	analysis   AnalysisMetrics
 }
 
 type podMetric struct {
@@ -624,7 +631,7 @@ func (rm resourceMetric) percent(r resource.Quantity) int64 {
 }
 
 func percentRawFunction(nominator, denominator float64) int64 {
-	if denominator > 0.0 {
+	if denominator != 0.0 {
 		return int64(100.0 * nominator / denominator)
 	}
 	return 0

@@ -35,7 +35,9 @@ type csvLine struct {
 	node                     string
 	namespace                string
 	pod                      string
+	podStatus                string
 	container                string
+	containerType            ContainerClassificationType
 	cpuCapacity              string
 	cpuRequests              string
 	cpuRequestsPercentage    string
@@ -62,7 +64,9 @@ var csvHeaderStrings = csvLine{
 	node:                     "NODE",
 	namespace:                "NAMESPACE",
 	pod:                      "POD",
+	podStatus:                "POD STATUS",
 	container:                "CONTAINER",
+	containerType:            "CONTAINER TYPE",
 	cpuCapacity:              "CPU CAPACITY (milli)",
 	cpuRequests:              "CPU REQUESTS",
 	cpuRequestsPercentage:    "CPU REQUESTS %%",
@@ -166,10 +170,12 @@ func (cp *csvPrinter) getLineItems(cl *csvLine) []string {
 			lineItems = append(lineItems, CSVStringTerminator+cl.namespace+CSVStringTerminator)
 		}
 		lineItems = append(lineItems, CSVStringTerminator+cl.pod+CSVStringTerminator)
+		lineItems = append(lineItems, CSVStringTerminator+cl.podStatus+CSVStringTerminator)
 	}
 
 	if cp.cr.ShowContainers {
 		lineItems = append(lineItems, CSVStringTerminator+cl.container+CSVStringTerminator)
+		lineItems = append(lineItems, CSVStringTerminator+string(cl.containerType)+CSVStringTerminator)
 	}
 
 	lineItems = append(lineItems, cl.cpuCapacity)
@@ -200,6 +206,9 @@ func (cp *csvPrinter) getLineItems(cl *csvLine) []string {
 	}
 
 	if cp.cr.BinpackAnalysis {
+		lineItems = append(lineItems, cl.binpack.nodesWellUtilized)
+		lineItems = append(lineItems, cl.binpack.nodesUnbalanced)
+		lineItems = append(lineItems, cl.binpack.nodesUnderutilized)
 		lineItems = append(lineItems, cl.binpack.idleHeadroom)
 		lineItems = append(lineItems, cl.binpack.idleWasteCPU)
 		lineItems = append(lineItems, cl.binpack.idleWasteMEM)

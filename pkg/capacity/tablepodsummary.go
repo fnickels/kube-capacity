@@ -24,60 +24,51 @@ type tablePodPrinter struct {
 	cr                         *DisplayCriteria
 	w                          *tabwriter.Writer
 	uniquePodAppSelectorLabels []string
-	uniquePodLabels            []string
-	uniqueGroupByNodeLabels    []string
-	uniqueDisplayNodeLabels    []string
-	uniqueRemainderNodeLabels  []string
+	uniqueDisplayPodLabels     []string
 }
 
 type tablePodLine struct {
-	appNameLabel    string
-	namespace       string
-	pod             string
-	podStatus       string
-	node            string
-	container       string
-	containerType   ContainerClassificationType
-	cpuRequests     string
-	cpuLimits       string
-	cpuUtil         string
-	memoryRequests  string
-	memoryLimits    string
-	memoryUtil      string
-	eniRequests     string
-	eniLimits       string
-	eniUtil         string
-	podCount        string
-	podLabels       []string
-	groupByLabels   []string
-	displayLabels   []string
-	remainderLabels []string
-	binpack         binAnalysis
+	appNameLabel   string
+	namespace      string
+	pod            string
+	podStatus      string
+	node           string
+	container      string
+	containerType  ContainerClassificationType
+	cpuRequests    string
+	cpuLimits      string
+	cpuUtil        string
+	memoryRequests string
+	memoryLimits   string
+	memoryUtil     string
+	eniRequests    string
+	eniLimits      string
+	eniUtil        string
+	podCount       string
+	podLabels      []string
+	binpack        binAnalysis
 }
 
 var tablePodHeaderStrings = tablePodLine{
-	appNameLabel:    "APP LABEL",
-	namespace:       "NAMESPACE",
-	pod:             "POD",
-	podStatus:       "POD STATUS",
-	node:            "NODE",
-	container:       "CONTAINER",
-	containerType:   "CONTAINER TYPE",
-	cpuRequests:     "CPU REQUESTS",
-	cpuLimits:       "CPU LIMITS",
-	cpuUtil:         "CPU UTIL",
-	memoryRequests:  "MEMORY REQUESTS",
-	memoryLimits:    "MEMORY LIMITS",
-	memoryUtil:      "MEMORY UTIL",
-	eniRequests:     "ENI REQUESTS",
-	eniLimits:       "ENI LIMITS",
-	eniUtil:         "ENI UTIL",
-	podCount:        "POD COUNT",
-	podLabels:       []string{},
-	groupByLabels:   []string{},
-	displayLabels:   []string{},
-	remainderLabels: []string{},
-	binpack:         binHeaders,
+	appNameLabel:   "APP LABEL",
+	namespace:      "NAMESPACE",
+	pod:            "POD",
+	podStatus:      "POD STATUS",
+	node:           "NODE",
+	container:      "CONTAINER",
+	containerType:  "CONTAINER TYPE",
+	cpuRequests:    "CPU REQUESTS",
+	cpuLimits:      "CPU LIMITS",
+	cpuUtil:        "CPU UTIL",
+	memoryRequests: "MEMORY REQUESTS",
+	memoryLimits:   "MEMORY LIMITS",
+	memoryUtil:     "MEMORY UTIL",
+	eniRequests:    "ENI REQUESTS",
+	eniLimits:      "ENI LIMITS",
+	eniUtil:        "ENI UTIL",
+	podCount:       "POD COUNT",
+	podLabels:      []string{},
+	binpack:        binHeaders,
 }
 
 func PrintTablePodSummary(cm *clusterMetric, cr *DisplayCriteria) {
@@ -92,8 +83,8 @@ func PrintTablePodSummary(cm *clusterMetric, cr *DisplayCriteria) {
 
 	var err error
 
-	// process Node Label selection elements
-	pp.uniquePodLabels, err = processPodLabelToDisplay(pp.cm)
+	// process Pod Label selection elements
+	pp.uniqueDisplayPodLabels, err = processPodLabelToDisplay(pp.cm, pp.cr)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -101,7 +92,7 @@ func PrintTablePodSummary(cm *clusterMetric, cr *DisplayCriteria) {
 	}
 
 	// copy Pod Label names to the Header object
-	tablePodHeaderStrings.podLabels = pp.uniquePodLabels
+	tablePodHeaderStrings.podLabels = pp.uniqueDisplayPodLabels
 
 	// sort pod list (maybe)
 	sortedPodAppList := pp.cm.rawPodAppList
@@ -213,10 +204,13 @@ func (pp *tablePodPrinter) getLineItems(tl *tablePodLine) []string {
 	// }
 
 	if pp.cr.BinpackAnalysis {
-		//	lineItems = append(lineItems, tl.binpack.idleHeadroom)
-		//	lineItems = append(lineItems, tl.binpack.idleWasteCPU)
-		//	lineItems = append(lineItems, tl.binpack.idleWasteMEM)
-		//	lineItems = append(lineItems, tl.binpack.idleWastePODS)
+		lineItems = append(lineItems, tl.binpack.nodesWellUtilized)
+		lineItems = append(lineItems, tl.binpack.nodesUnbalanced)
+		lineItems = append(lineItems, tl.binpack.nodesUnderutilized)
+		lineItems = append(lineItems, tl.binpack.idleHeadroom)
+		lineItems = append(lineItems, tl.binpack.idleWasteCPU)
+		lineItems = append(lineItems, tl.binpack.idleWasteMEM)
+		lineItems = append(lineItems, tl.binpack.idleWastePODS)
 		lineItems = append(lineItems, tl.binpack.binpackRequestRatio)
 		lineItems = append(lineItems, tl.binpack.binpackLimitRatio)
 		lineItems = append(lineItems, tl.binpack.binpackUtilizationRatio)
@@ -247,7 +241,7 @@ func (pp *tablePodPrinter) printClusterLine() {
 		container:      VoidValue,
 		containerType:  VoidContainerClassification,
 		podCount:       stringFormatInt64(pcSum),
-		podLabels:      sliceFilledWithString(len(pp.uniquePodLabels), VoidValue),
+		podLabels:      sliceFilledWithString(len(pp.uniqueDisplayPodLabels), VoidValue),
 		cpuRequests:    pp.cm.cpu.requestString(pp.cr),
 		cpuLimits:      pp.cm.cpu.limitString(pp.cr),
 		cpuUtil:        pp.cm.cpu.utilString(pp.cr),
@@ -267,16 +261,15 @@ func (pp *tablePodPrinter) printClusterLine() {
 func (pp *tablePodPrinter) printPodAppLine(pal *podAppSummary) {
 
 	// get pod labels from across all related pods
-	labelList := make([]string, len(pp.uniquePodLabels))
-	for i, labelName := range pp.uniquePodLabels {
+	labelList := make([]string, len(pp.uniqueDisplayPodLabels))
+	for i, labelName := range pp.uniqueDisplayPodLabels {
 		listOfValues := map[string]bool{}
 		for _, pod := range pal.Items {
 			labelValue := pod.Labels[labelName]
-			if _, ok := listOfValues[labelValue]; ok {
+			if !listOfValues[labelValue] {
 				listOfValues[labelValue] = true
 			}
 		}
-
 		values := make([]string, len(listOfValues))
 		j := 0
 		for k := range listOfValues {
@@ -334,8 +327,8 @@ func (pp *tablePodPrinter) printPodLine(pl *corev1.Pod, pm *podMetric, pal *podA
 		fmt.Fprintf(os.Stdout, "LABELS --> %v\n", pl.Labels)
 	}
 
-	labelList := make([]string, len(pp.uniquePodLabels))
-	for i, labelName := range pp.uniquePodLabels {
+	labelList := make([]string, len(pp.uniqueDisplayPodLabels))
+	for i, labelName := range pp.uniqueDisplayPodLabels {
 		labelList[i] = pl.Labels[labelName]
 	}
 
@@ -391,7 +384,7 @@ func (pp *tablePodPrinter) printContainerLine(pl *corev1.Pod, pal *podAppSummary
 		pod:           pl.GetName(),
 		container:     cl.Name,
 		containerType: containerType,
-		podLabels:     sliceFilledWithString(len(pp.uniquePodLabels), ""),
+		podLabels:     sliceFilledWithString(len(pp.uniqueDisplayPodLabels), ""),
 
 		//		cpuRequests:     cm.cpu.requestString(pp.availableFormat),
 		//		cpuLimits:       cm.cpu.limitString(pp.availableFormat),

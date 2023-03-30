@@ -1,111 +1,48 @@
 package capacity
 
-func (cm *clusterMetric) getUniquePodLabels() (result []string) {
+import (
+	"fmt"
+	"strings"
+)
+
+func (cm *clusterMetric) getUniquePodLabels() (result []string, resultMap map[string]bool) {
 
 	for _, pod := range cm.rawPodList {
 		for k, _ := range pod.Labels {
-			found := false
-			for _, b := range result {
-				if k == b {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !resultMap[k] {
 				result = append(result, k)
+				resultMap[k] = true
 			}
 		}
 	}
 
-	return result
+	return result, resultMap
 }
 
-func processPodLabelToDisplay(cm *clusterMetric) ([]string, error) {
+func processPodLabelToDisplay(cm *clusterMetric, cr *DisplayCriteria) ([]string, error) {
 
-	// if nothing is called for exit
-	//	if groupBy == "" && display == "" && !showAll {
-	//		// only populate 'uniqueNodeLabels' if one of the the selection criteria is set
-	//		return []string{}, []string{}, []string{}, nil
-	//	}
+	badLabels := []string{}
+	labelsToDisplay := []string{}
 
-	//  badLabels := []string{}
-	//  displayLabels := []string{}
-	// remainderLabels := []string{}
-	//
-	uniquePodLabels := cm.getUniquePodLabels()
-	//
-	//	// process any 'group by' labels 1st
-	//	if groupBy != "" {
-	//		unknownLabels := false
-	//		for _, label := range strings.Split(groupBy, ",") {
-	//			found := false
-	//			for _, existingLabel := range uniqueNodeLabels {
-	//				if label == existingLabel {
-	//					groupByLabels = append(groupByLabels, label)
-	//					found = true
-	//					break
-	//				}
-	//			}
-	//			if !found {
-	//				badLabels = append(badLabels, label)
-	//				unknownLabels = true
-	//			}
-	//		}
-	//		if unknownLabels {
-	//			return []string{}, []string{}, []string{}, fmt.Errorf("unknown (group by) node label(s): %v", badLabels)
-	//		}
-	//	}
-	//
-	//	// process any 'display' node labels next
-	//	if display != "" {
-	//		unknownLabels := false
-	//		for _, label := range strings.Split(display, ",") {
-	//			found := false
-	//			for _, existingLabel := range uniqueNodeLabels {
-	//				if label == existingLabel {
-	//					// check to see if already picked up in group by set
-	//					inGroupBy := false
-	//					for _, groupedLabel := range groupByLabels {
-	//						if label == groupedLabel {
-	//							inGroupBy = true
-	//							break
-	//						}
-	//					}
-	//					// if not add it to the display
-	//					if !inGroupBy {
-	//						displayLabels = append(displayLabels, label)
-	//					}
-	//					found = true
-	//					break
-	//				}
-	//			}
-	//			if !found {
-	//				badLabels = append(badLabels, label)
-	//				unknownLabels = true
-	//			}
-	//		}
-	//		if unknownLabels {
-	//			return []string{}, []string{}, []string{}, fmt.Errorf("unknown (display) node label(s): %v", badLabels)
-	//		}
-	//	}
-	//
-	//	// pick up all node labels not previously selected if 'showAll' is specified
-	//	if showAll {
-	//		for _, label := range uniqueNodeLabels {
-	//			// check to see if already picked up in the 'group by' or 'display' sets
-	//			found := false
-	//			for _, check := range append(groupByLabels, displayLabels...) {
-	//				if label == check {
-	//					found = true
-	//					break
-	//				}
-	//			}
-	//			// if not, add it to the remainder list
-	//			if !found {
-	//				remainderLabels = append(remainderLabels, label)
-	//			}
-	//		}
-	//	}
+	uniquePodLabels, podLabels := cm.getUniquePodLabels()
 
-	return uniquePodLabels, nil
+	if cr.ShowAllPodLabels {
+		// show all pod labels, copy unique list
+		labelsToDisplay = uniquePodLabels
+	} else if cr.DisplayPodLabels != "" {
+		// select which labels to display
+		for _, label := range strings.Split(cr.DisplayPodLabels, ",") {
+			if podLabels[label] {
+				labelsToDisplay = append(labelsToDisplay, label)
+			} else {
+				badLabels = append(badLabels, label)
+			}
+		}
+	}
+
+	if len(badLabels) > 0 {
+		return []string{}, fmt.Errorf("unknown (display) pod label(s): %v", badLabels)
+	}
+
+	return labelsToDisplay, nil
 }

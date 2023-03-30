@@ -7,6 +7,9 @@ import (
 )
 
 type binAnalysis struct {
+	nodesWellUtilized       string `json:"nodesWellUtilized,omitempty"`
+	nodesUnderutilized      string `json:"nodesUnderutilized,omitempty"`
+	nodesUnbalanced         string `json:"nodesUnbalanced,omitempty"`
 	idleHeadroom            string `json:"idleHeadroomPercentage,omitempty"`
 	idleWasteCPU            string `json:"idleCpuWastePercentage,omitempty"`
 	idleWasteMEM            string `json:"idlememoryWastePercentage,omitempty"`
@@ -17,40 +20,79 @@ type binAnalysis struct {
 }
 
 var binHeaders = binAnalysis{
+	nodesWellUtilized:       "WELL UTILZD NODES",
+	nodesUnderutilized:      "UNDER UTILZD NODES",
+	nodesUnbalanced:         "UNBALNCD NODES",
 	idleHeadroom:            "IDLE HEADROOM %%",
 	idleWasteCPU:            "IDLE WASTE CPU %%",
 	idleWasteMEM:            "IDLE WASTE MEM %%",
 	idleWastePODS:           "IDLE WASTE PODS %%",
-	binpackRequestRatio:     "CPU:MEM REQUESTS",
-	binpackLimitRatio:       "CPU:MEM LIMITS",
-	binpackUtilizationRatio: "CPU:MEM UTIL",
+	binpackRequestRatio:     "REQUEST MEM/CPU",
+	binpackLimitRatio:       "LIMITS MEM/CPU",
+	binpackUtilizationRatio: "UTIL MEM/CPU",
+}
+
+type analysisData struct {
+	headroom struct {
+		overall int64
+		cpu     int64
+		memory  int64
+		pods    int64
+	}
+	memToCpuRatios struct {
+		limit       int64
+		request     int64
+		utilization int64
+	}
+	waste struct {
+		cpu    int64
+		memory int64
+		pods   int64
+	}
+}
+
+func getAnalysisData(cpu *resourceMetric, memory *resourceMetric, eni *resourceMetric, podCount *podCount) (result *analysisData) {
+
+	result = &analysisData{}
+
+	result.memToCpuRatios.limit = memoryToCPUCoreRatio(memory.limit, cpu.limit)
+	result.memToCpuRatios.request = memoryToCPUCoreRatio(memory.request, cpu.request)
+	result.memToCpuRatios.utilization = memoryToCPUCoreRatio(memory.utilization, cpu.utilization)
+
+	cpuReqPercent := cpu.percent(cpu.request)
+	memReqPercent := memory.percent(memory.request)
+	// eniReqPercent := eni.percent(eni.request)
+	podCntPercent := percentRawFunction(float64(podCount.current), float64(podCount.allocatable))
+
+	max := maxOfThree(cpuReqPercent, memReqPercent, podCntPercent)
+
+	result.headroom.overall = headroom(max)
+	result.headroom.cpu = headroom(cpuReqPercent)
+	result.headroom.memory = headroom(memReqPercent)
+	result.headroom.pods = headroom(podCntPercent)
+
+	result.waste.cpu = result.headroom.cpu - result.headroom.overall
+	result.waste.memory = result.headroom.memory - result.headroom.overall
+	result.waste.pods = result.headroom.pods - result.headroom.overall
+
+	return result
 }
 
 func (cm *clusterMetric) getBinAnalysis() binAnalysis {
 
-	cpuReqPercent := cm.cpu.percent(cm.cpu.request)
-	memReqPercent := cm.memory.percent(cm.memory.request)
-	podCntPercent := percentRawFunction(float64(cm.podCount.current), float64(cm.podCount.allocatable))
-
-	max := maxOfThree(cpuReqPercent, memReqPercent, podCntPercent)
-	headroom := headroom(max)
-
-	wasteCPU := headroomDelta(cpuReqPercent, max)
-	wasteMEM := headroomDelta(memReqPercent, max)
-	wastePODS := headroomDelta(podCntPercent, max)
-
-	limitRatio := memoryToCPUCoreRatio(cm.memory.limit, cm.cpu.limit)
-	requestsRatio := memoryToCPUCoreRatio(cm.memory.request, cm.cpu.request)
-	utilizationRatio := memoryToCPUCoreRatio(cm.memory.utilization, cm.cpu.utilization)
+	x := getAnalysisData(cm.cpu, cm.memory, cm.eni, cm.podCount)
 
 	var results = binAnalysis{
-		idleHeadroom:            fmt.Sprintf("%d%%%%", headroom),
-		idleWasteCPU:            fmt.Sprintf("%d%%%%", wasteCPU),
-		idleWasteMEM:            fmt.Sprintf("%d%%%%", wasteMEM),
-		idleWastePODS:           fmt.Sprintf("%d%%%%", wastePODS),
-		binpackRequestRatio:     fmt.Sprintf("%d", requestsRatio),
-		binpackLimitRatio:       fmt.Sprintf("%d", limitRatio),
-		binpackUtilizationRatio: fmt.Sprintf("%d", utilizationRatio),
+		nodesWellUtilized:       fmt.Sprintf("%d", cm.analysis.nodesWellUtilized),
+		nodesUnderutilized:      fmt.Sprintf("%d", cm.analysis.nodesUnderutilized),
+		nodesUnbalanced:         fmt.Sprintf("%d", cm.analysis.nodesUnbalanced),
+		idleHeadroom:            fmt.Sprintf("%d%%%%", x.headroom.overall),
+		idleWasteCPU:            fmt.Sprintf("%d%%%%", x.waste.cpu),
+		idleWasteMEM:            fmt.Sprintf("%d%%%%", x.waste.memory),
+		idleWastePODS:           fmt.Sprintf("%d%%%%", x.waste.pods),
+		binpackRequestRatio:     fmt.Sprintf("%d", x.memToCpuRatios.request),
+		binpackLimitRatio:       fmt.Sprintf("%d", x.memToCpuRatios.limit),
+		binpackUtilizationRatio: fmt.Sprintf("%d", x.memToCpuRatios.utilization),
 	}
 
 	return results
@@ -58,18 +100,19 @@ func (cm *clusterMetric) getBinAnalysis() binAnalysis {
 
 func (pal *podAppSummary) getBinAnalysis() binAnalysis {
 
-	limitRatio := memoryToCPUCoreRatio(pal.memory.limit, pal.cpu.limit)
-	requestsRatio := memoryToCPUCoreRatio(pal.memory.request, pal.cpu.request)
-	utilizationRatio := memoryToCPUCoreRatio(pal.memory.utilization, pal.cpu.utilization)
+	x := getAnalysisData(pal.cpu, pal.memory, pal.eni, &podCount{})
 
 	var results = binAnalysis{
+		nodesWellUtilized:       "n/a",
+		nodesUnderutilized:      "n/a",
+		nodesUnbalanced:         "n/a",
 		idleHeadroom:            "n/a",
 		idleWasteCPU:            "n/a",
 		idleWasteMEM:            "n/a",
 		idleWastePODS:           "n/a",
-		binpackRequestRatio:     fmt.Sprintf("%d", requestsRatio),
-		binpackLimitRatio:       fmt.Sprintf("%d", limitRatio),
-		binpackUtilizationRatio: fmt.Sprintf("%d", utilizationRatio),
+		binpackRequestRatio:     fmt.Sprintf("%d", x.memToCpuRatios.request),
+		binpackLimitRatio:       fmt.Sprintf("%d", x.memToCpuRatios.limit),
+		binpackUtilizationRatio: fmt.Sprintf("%d", x.memToCpuRatios.utilization),
 	}
 
 	return results
@@ -77,29 +120,19 @@ func (pal *podAppSummary) getBinAnalysis() binAnalysis {
 
 func (nm *nodeMetric) getBinAnalysis() binAnalysis {
 
-	cpuReqPercent := nm.cpu.percent(nm.cpu.request)
-	memReqPercent := nm.memory.percent(nm.memory.request)
-	podCntPercent := percentRawFunction(float64(nm.podCount.current), float64(nm.podCount.allocatable))
-
-	max := maxOfThree(cpuReqPercent, memReqPercent, podCntPercent)
-	headroom := headroom(max)
-
-	wasteCPU := headroomDelta(cpuReqPercent, max)
-	wasteMEM := headroomDelta(memReqPercent, max)
-	wastePODS := headroomDelta(podCntPercent, max)
-
-	limitRatio := memoryToCPUCoreRatio(nm.memory.limit, nm.cpu.limit)
-	requestsRatio := memoryToCPUCoreRatio(nm.memory.request, nm.cpu.request)
-	utilizationRatio := memoryToCPUCoreRatio(nm.memory.utilization, nm.cpu.utilization)
+	x := getAnalysisData(nm.cpu, nm.memory, nm.eni, nm.podCount)
 
 	var results = binAnalysis{
-		idleHeadroom:            fmt.Sprintf("%d%%%%", headroom),
-		idleWasteCPU:            fmt.Sprintf("%d%%%%", wasteCPU),
-		idleWasteMEM:            fmt.Sprintf("%d%%%%", wasteMEM),
-		idleWastePODS:           fmt.Sprintf("%d%%%%", wastePODS),
-		binpackRequestRatio:     fmt.Sprintf("%d", requestsRatio),
-		binpackLimitRatio:       fmt.Sprintf("%d", limitRatio),
-		binpackUtilizationRatio: fmt.Sprintf("%d", utilizationRatio),
+		nodesWellUtilized:       fmt.Sprintf("%d", nm.analysis.nodesWellUtilized),
+		nodesUnderutilized:      fmt.Sprintf("%d", nm.analysis.nodesUnderutilized),
+		nodesUnbalanced:         fmt.Sprintf("%d", nm.analysis.nodesUnbalanced),
+		idleHeadroom:            fmt.Sprintf("%d%%%%", x.headroom.overall),
+		idleWasteCPU:            fmt.Sprintf("%d%%%%", x.waste.cpu),
+		idleWasteMEM:            fmt.Sprintf("%d%%%%", x.waste.memory),
+		idleWastePODS:           fmt.Sprintf("%d%%%%", x.waste.pods),
+		binpackRequestRatio:     fmt.Sprintf("%d", x.memToCpuRatios.request),
+		binpackLimitRatio:       fmt.Sprintf("%d", x.memToCpuRatios.limit),
+		binpackUtilizationRatio: fmt.Sprintf("%d", x.memToCpuRatios.utilization),
 	}
 
 	return results
@@ -107,18 +140,19 @@ func (nm *nodeMetric) getBinAnalysis() binAnalysis {
 
 func (pm *podMetric) getBinAnalysis() binAnalysis {
 
-	limitRatio := memoryToCPUCoreRatio(pm.memory.limit, pm.cpu.limit)
-	requestsRatio := memoryToCPUCoreRatio(pm.memory.request, pm.cpu.request)
-	utilizationRatio := memoryToCPUCoreRatio(pm.memory.utilization, pm.cpu.utilization)
+	x := getAnalysisData(pm.cpu, pm.memory, pm.eni, &podCount{})
 
 	var results = binAnalysis{
+		nodesWellUtilized:       "",
+		nodesUnderutilized:      "",
+		nodesUnbalanced:         "",
 		idleHeadroom:            "",
 		idleWasteCPU:            "",
 		idleWasteMEM:            "",
 		idleWastePODS:           "",
-		binpackRequestRatio:     fmt.Sprintf("%d", requestsRatio),
-		binpackLimitRatio:       fmt.Sprintf("%d", limitRatio),
-		binpackUtilizationRatio: fmt.Sprintf("%d", utilizationRatio),
+		binpackRequestRatio:     fmt.Sprintf("%d", x.memToCpuRatios.request),
+		binpackLimitRatio:       fmt.Sprintf("%d", x.memToCpuRatios.limit),
+		binpackUtilizationRatio: fmt.Sprintf("%d", x.memToCpuRatios.utilization),
 	}
 
 	return results
@@ -127,6 +161,9 @@ func (pm *podMetric) getBinAnalysis() binAnalysis {
 func (cm *containerMetric) getBinAnalysis() binAnalysis {
 
 	var results = binAnalysis{
+		nodesWellUtilized:       "",
+		nodesUnderutilized:      "",
+		nodesUnbalanced:         "",
 		idleHeadroom:            "",
 		idleWasteCPU:            "",
 		idleWasteMEM:            "",

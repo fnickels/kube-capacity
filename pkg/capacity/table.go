@@ -193,6 +193,9 @@ func (tp *tablePrinter) getLineItems(tl *tableLine) []string {
 	}
 
 	if tp.cr.BinpackAnalysis {
+		lineItems = append(lineItems, tl.binpack.nodesWellUtilized)
+		lineItems = append(lineItems, tl.binpack.nodesUnbalanced)
+		lineItems = append(lineItems, tl.binpack.nodesUnderutilized)
 		lineItems = append(lineItems, tl.binpack.idleHeadroom)
 		lineItems = append(lineItems, tl.binpack.idleWasteCPU)
 		lineItems = append(lineItems, tl.binpack.idleWasteMEM)

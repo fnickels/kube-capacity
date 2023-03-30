@@ -63,6 +63,8 @@ func FetchAndPrint(cr *DisplayCriteria) {
 
 	cm := buildClusterMetric(podList, pmList, nodeList, nmList, cr)
 
+	cm.analyzeCluster(cr)
+
 	printList(&cm, cr)
 }
 

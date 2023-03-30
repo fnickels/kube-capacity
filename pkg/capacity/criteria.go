@@ -16,6 +16,7 @@ type DisplayCriteria struct {
 	DisplayNodeLabels string
 	GroupByNodeLabels string
 	ShowAllNodeLabels bool
+	DisplayPodLabels  string
 	ShowAllPodLabels  bool
 	SelectPodLabels   string
 	KubeContext       string

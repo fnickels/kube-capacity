@@ -61,14 +61,17 @@ func init() {
 		"pod-count", "", false, "includes pod count per node in output")
 	rootCmd.PersistentFlags().BoolVarP(&criteria.AvailableFormat,
 		"available", "a", false, "includes quantity available instead of percentage used (ignored with csv or tsv output types)")
-	rootCmd.PersistentFlags().StringVarP(&criteria.SelectPodLabels,
-		"select-pod-labels", "", "", "comma separated list of pod label(s) to identify pod families (default: '"+capacity.PodAppNameLabelDefaultSelector+"')")
 	rootCmd.PersistentFlags().StringVarP(&criteria.DisplayNodeLabels,
 		"display-node-labels", "", "", "comma separated list of node label(s) to display")
 	rootCmd.PersistentFlags().StringVarP(&criteria.GroupByNodeLabels,
 		"group-by-node-labels", "", "", "comma separated list of node label(s) to group by")
 	rootCmd.PersistentFlags().BoolVarP(&criteria.ShowAllNodeLabels,
 		"show-all-node-labels", "", false, "show all node labels")
+
+	rootCmd.PersistentFlags().StringVarP(&criteria.SelectPodLabels,
+		"select-pod-labels", "", "", "comma separated list of pod label(s) to identify pod families (default: '"+capacity.PodAppNameLabelDefaultSelector+"')")
+	rootCmd.PersistentFlags().StringVarP(&criteria.DisplayPodLabels,
+		"display-pod-labels", "", "", "comma separated list of node label(s) to display")
 	rootCmd.PersistentFlags().BoolVarP(&criteria.ShowAllPodLabels,
 		"show-all-pod-labels", "", false, "show all pod labels")
 
