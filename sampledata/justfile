@@ -1,0 +1,114 @@
+#!/usr/bin/env just --justfile
+
+# default recipe to display help information
+default:
+	@just --list
+
+
+# Setup Credentials run as `$(just setup)`
+setup:
+    # kubeconjurer get rc3-val-lt usw2 lt
+    kubeconjurer get rc3-val-prod use1 prod
+
+# List Clusters
+list:
+    kubeconjurer list
+
+
+api:
+    kubectl get --raw "/apis/metrics.k8s.io/v1beta1/nodes" | jq '.'
+
+pull:
+    kubectl describe namespace    > ./rc3-val-lt/namespaces.txt
+    kubectl describe nodes        > ./rc3-val-lt/nodes.txt
+    kubectl describe pods         > ./rc3-val-lt/pods.txt
+    kubectl get replicationcontrollers  --all-namespaces -o yaml > ./rc3-val-lt/replicationcontrollers.yaml    
+    kubectl get deployments             --all-namespaces -o yaml > ./rc3-val-lt/deployments.yaml    
+    kubectl get services                --all-namespaces -o yaml > ./rc3-val-lt/services.yaml    
+    kubectl get pods                    --all-namespaces -o yaml > ./rc3-val-lt/pods.yaml
+    kubectl get nodes                   --all-namespaces -o yaml > ./rc3-val-lt/nodes.yaml
+    kubectl get nodes                   --all-namespaces -o json > ./rc3-val-lt/nodes.json
+
+test:
+    kubectl get deployments -n 710 -o json | \
+        jq '.items[]| select(.spec.template.spec.containers[].resources != null) | select(.metadata.labels.appname != null) | [.metadata.labels.appname,  .spec.template.spec.containers[].resources.requests.cpu, .spec.template.spec.containers[].resources.limits.memory, .spec.template.spec.containers[].resources.requests.memory] | @csv'  | \
+        perl -pe 's/\\//g' | perl -pe 's/"//g' > test2.csv
+
+set positional-arguments
+
+@do  *args='': 
+    just grab $1 $2 $3
+    just get $1 $2 $3
+    echo "done with $1 $2 $3"
+
+@grab *args='':
+    kubeconjurer get $1 $2 $3
+
+@get *args='':
+    mkdir -p ./$1/$2/$3
+    # remove previous files
+    rm ./$1/$2/$3/util* ./$1/$2/$3/*.yaml ./$1/$2/$3/*.json || true
+    echo "All output files will be placed in ./$1/$2/$3"
+    export KUBECAP=/mnt/d/git/github.com/fnickels/kube-capacity/kube-capacity \
+        $( kubeconjurer get $1 $2 $3 )  \
+        && echo "  VALUE=${KUBECAP}" \
+        && echo "  Staring on CUSTOM kube-capacity summary runs" \
+        && ${KUBECAP} -o table --pod-summary --pod-count -u -b                   > ./$1/$2/$3/summary-util-bin.out \
+        && ${KUBECAP} -o table --pod-summary --pod-count -p -u -b                > ./$1/$2/$3/summary-pods.out  \
+        && ${KUBECAP} -o table --pod-summary --pod-count -p -c -u -b             > ./$1/$2/$3/summary-containers.out \
+        && echo "  Staring on CUSTOM kube-capacity runs" \
+        && ${KUBECAP}  -o tsv \
+                        --util --show-all-node-labels  --pod-count                                                                  > ./$1/$2/$3/utilization.tsv \
+        && ${KUBECAP}  --pod-count -o tsv \
+                        --util --group-by-node-labels=riot.io/security-perimeter,class --sort=cpu.request.percentage  \
+                               --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/$3/utilization-cpu-req.tsv \
+        && ${KUBECAP}  --pod-count -o json \
+                        --util --group-by-node-labels=riot.io/security-perimeter,class --sort=cpu.request.percentage  \
+                               --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/$3/utilization-cpu-req.json \
+        && ${KUBECAP}  --pod-count \
+                        --util --group-by-node-labels=riot.io/security-perimeter,class --sort=cpu.request.percentage  \
+                               --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/$3/utilization-cpu-req.txt \
+        && ${KUBECAP}  --pod-count \
+                        --util --group-by-node-labels=riot.io/security-perimeter,class --sort=cpu.limit.percentage    \
+                               --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/$3/utilization-cpu-lim.txt \
+        && ${KUBECAP}  --pod-count \
+                        --util --group-by-node-labels=riot.io/security-perimeter,class --sort=cpu.request.percentage --pods \
+                               --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/$3/utilization-cpu-req-pods.txt \
+        && ${KUBECAP}  --pod-count \
+                        --util --group-by-node-labels=riot.io/security-perimeter,class --sort=cpu.limit.percentage --pods   \
+                               --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/$3/utilization-cpu-lim-pods.txt \
+        && ${KUBECAP}  --pod-count -b \
+                        --util --group-by-node-labels=riot.io/security-perimeter,class --sort=cpu.request.percentage  \
+                               --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/$3/utilization-cpu-req-binpack.txt \
+        && echo "  Staring on kube-capacity runs" \
+        && kubectl resource-capacity --util --sort cpu.limit.percentage  --pod-count                > ./$1/$2/$3/utilization-ORIG-cpu.txt \
+        && kubectl resource-capacity --util --sort cpu.limit.percentage  --pod-count --pods         > ./$1/$2/$3/utilization-ORIG-cpu-pods.txt \
+        && kubectl resource-capacity --util --sort cpu.limit.percentage  --pod-count        -o json > ./$1/$2/$3/utilization-ORIG-cpu.json \
+        && kubectl resource-capacity --util --sort cpu.limit.percentage  --pod-count --pods -o json > ./$1/$2/$3/utilization-ORIG-cpu-pods.json \
+        && echo "  Staring on base kubectl describe runs" \
+        && kubectl describe namespace    > ./$1/$2/$3/namespaces.txt \
+        && kubectl describe nodes        > ./$1/$2/$3/nodes.txt \
+        && kubectl describe pods         > ./$1/$2/$3/pods.txt \
+        && echo "  Staring on base kubectl get runs" \
+        && kubectl get replicationcontrollers  --all-namespaces -o yaml > ./$1/$2/$3/replicationcontrollers.yaml    \
+        && kubectl get deployments             --all-namespaces -o yaml > ./$1/$2/$3/deployments.yaml    \
+        && kubectl get services                --all-namespaces -o yaml > ./$1/$2/$3/services.yaml    \
+        && kubectl get pods                    --all-namespaces -o yaml > ./$1/$2/$3/pods.yaml \
+        && kubectl get nodes                   --all-namespaces -o yaml > ./$1/$2/$3/nodes.yaml \
+        && kubectl get nodes                   --all-namespaces -o json > ./$1/$2/$3/nodes.json 
+    echo "  Done."
+ 
+
+
+### https://krew.sigs.k8s.io/docs/user-guide/setup/install/
+### https://www.middlewareinventory.com/blog/cpu-memory-usage-nodes-k8s/
+
+krewhelp:
+    kubectl krew
+    kubectl krew version
+
+installkubecapacity:
+    kubectl krew install resource-capacity
+
+kubecap:
+    kubectl resource-capacity --util --sort cpu.limit.percentage --pods
