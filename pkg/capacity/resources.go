@@ -752,3 +752,51 @@ func getPodAppsList(podList *corev1.PodList, selectPodLabels string) (result []p
 
 	return result, orderedPodAppKeys
 }
+
+func (cm *clusterMetric) getSortedPodAppSummaryMetrics(sortBy string) []*podAppSummary {
+
+	sortedPodAppMetrics := make([]*podAppSummary, len(cm.rawPodAppList))
+
+	for i := range cm.rawPodAppList {
+		sortedPodAppMetrics[i] = &cm.rawPodAppList[i]
+	}
+
+	sort.Slice(sortedPodAppMetrics, func(i, j int) bool {
+		m1 := sortedPodAppMetrics[i]
+		m2 := sortedPodAppMetrics[j]
+
+		switch sortBy {
+		case "cpu.util":
+			return m2.cpu.utilization.MilliValue() < m1.cpu.utilization.MilliValue()
+		case "cpu.limit":
+			return m2.cpu.limit.MilliValue() < m1.cpu.limit.MilliValue()
+		case "cpu.request":
+			return m2.cpu.request.MilliValue() < m1.cpu.request.MilliValue()
+		case "mem.util":
+			return m2.memory.utilization.Value() < m1.memory.utilization.Value()
+		case "mem.limit":
+			return m2.memory.limit.Value() < m1.memory.limit.Value()
+		case "mem.request":
+			return m2.memory.request.Value() < m1.memory.request.Value()
+		case "cpu.util.percentage":
+			return m2.cpu.percent(m2.cpu.utilization) < m1.cpu.percent(m1.cpu.utilization)
+		case "cpu.limit.percentage":
+			return m2.cpu.percent(m2.cpu.limit) < m1.cpu.percent(m1.cpu.limit)
+		case "cpu.request.percentage":
+			return m2.cpu.percent(m2.cpu.request) < m1.cpu.percent(m1.cpu.request)
+		case "mem.util.percentage":
+			return m2.memory.percent(m2.memory.utilization) < m1.memory.percent(m1.memory.utilization)
+		case "mem.limit.percentage":
+			return m2.memory.percent(m2.memory.limit) < m1.memory.percent(m1.memory.limit)
+		case "mem.request.percentage":
+			return m2.memory.percent(m2.memory.request) < m1.memory.percent(m1.memory.request)
+		default:
+			if m1.appNameKey == m2.appNameKey {
+				return m1.appNameLabel < m2.appNameLabel
+			}
+			return m1.appNameKey < m2.appNameKey
+		}
+	})
+
+	return sortedPodAppMetrics
+}

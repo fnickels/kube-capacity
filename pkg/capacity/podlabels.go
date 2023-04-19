@@ -7,6 +7,8 @@ import (
 
 func (cm *clusterMetric) getUniquePodLabels() (result []string, resultMap map[string]bool) {
 
+	resultMap = map[string]bool{}
+
 	for _, pod := range cm.rawPodList {
 		for k, _ := range pod.Labels {
 			if !resultMap[k] {

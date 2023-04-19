@@ -40,6 +40,11 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		if err := validateSortBy(criteria.SortBy); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+
 		if criteria.ShowContainers {
 			criteria.ShowPods = true
 		}
@@ -118,4 +123,13 @@ func validateOutputType(outputType string) error {
 		}
 	}
 	return fmt.Errorf("Unsupported Output Type. We only support: %v", capacity.SupportedOutputs())
+}
+
+func validateSortBy(sortBy string) error {
+	for _, attribute := range capacity.SupportedSortAttributes {
+		if attribute == sortBy {
+			return nil
+		}
+	}
+	return fmt.Errorf("Unsupported Sort expression. We only support: %v", capacity.SupportedSortAttributes)
 }

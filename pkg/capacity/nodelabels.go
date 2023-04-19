@@ -7,6 +7,8 @@ import (
 
 func (cm *clusterMetric) getUniqueNodeLabels() (result []string, resultMap map[string]bool) {
 
+	resultMap = map[string]bool{}
+
 	for _, node := range cm.nodeMetrics {
 		for k, _ := range node.nodeLabels {
 			if !resultMap[k] {

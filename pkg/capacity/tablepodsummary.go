@@ -95,7 +95,8 @@ func PrintTablePodSummary(cm *clusterMetric, cr *DisplayCriteria) {
 	tablePodHeaderStrings.podLabels = pp.uniqueDisplayPodLabels
 
 	// sort pod list (maybe)
-	sortedPodAppList := pp.cm.rawPodAppList
+	// sortedPodAppList := pp.cm.rawPodAppList
+	sortedPodAppList := pp.cm.getSortedPodAppSummaryMetrics(pp.cr.SortBy)
 
 	pp.printLine(&tablePodHeaderStrings)
 
@@ -105,28 +106,30 @@ func PrintTablePodSummary(cm *clusterMetric, cr *DisplayCriteria) {
 
 	for _, pal := range sortedPodAppList {
 
-		pp.printPodAppLine(&pal)
+		pp.printPodAppLine(pal)
 
 		if cr.ShowPods || cr.ShowContainers {
+			// need to add this
+			// podMetrics := nm.getSortedPodMetrics(pp.cr.SortBy)
 			for _, pl := range pal.Items {
 
 				key := fmt.Sprintf("%s-%s", pl.Namespace, pl.Name)
 				pm := cm.podMetrics[key]
 
-				pp.printPodLine(&pl, pm, &pal)
+				pp.printPodLine(&pl, pm, pal)
 
 				if cr.ShowContainers {
 					for _, cc := range pl.Spec.InitContainers {
-						pp.printContainerLine(&pl, &pal, &cc, InitContainerClassification)
+						pp.printContainerLine(&pl, pal, &cc, InitContainerClassification)
 					}
 
 					for _, cc := range pl.Spec.Containers {
-						pp.printContainerLine(&pl, &pal, &cc, NormalContainerClassification)
+						pp.printContainerLine(&pl, pal, &cc, NormalContainerClassification)
 					}
 
 					for _, cc := range pl.Spec.EphemeralContainers {
 						ce := corev1.Container(cc.EphemeralContainerCommon)
-						pp.printContainerLine(&pl, &pal, &ce, EphemeralContainerClassification)
+						pp.printContainerLine(&pl, pal, &ce, EphemeralContainerClassification)
 					}
 				}
 			}
