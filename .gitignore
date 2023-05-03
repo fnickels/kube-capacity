@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+*.xlsx
 main
 dist
 kube-capacity

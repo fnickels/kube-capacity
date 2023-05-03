@@ -23,6 +23,8 @@ import (
 	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/fnickels/kube-capacity/pkg/kube"
+	appsv1 "k8s.io/api/apps/v1"
+	autov1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	resourcehelper "k8s.io/kubectl/pkg/util/resource"
@@ -39,6 +41,9 @@ func FetchAndPrint(cr *DisplayCriteria) {
 	}
 
 	podList, nodeList := getPodsAndNodes(clientset, &cr.Filters)
+
+	deploymentList := getDeployments(clientset)
+	hpaList := getHPAs(clientset)
 
 	var pmList *v1beta1.PodMetricsList
 	var nmList *v1beta1.NodeMetricsList
@@ -58,7 +63,7 @@ func FetchAndPrint(cr *DisplayCriteria) {
 	}
 
 	if cr.ShowDebug {
-		debug(podList, pmList)
+		debug(clientset, podList, pmList, deploymentList, hpaList)
 	}
 
 	cm := buildClusterMetric(podList, pmList, nodeList, nmList, cr)
@@ -161,13 +166,56 @@ func getNodeMetrics(mClientset *metrics.Clientset, nodeLabels string) *v1beta1.N
 	return nmList
 }
 
-func debug(podList *corev1.PodList, pmList *v1beta1.PodMetricsList) {
+func debug(clientset kubernetes.Interface,
+	podList *corev1.PodList,
+	pmList *v1beta1.PodMetricsList,
+	deployList *appsv1.DeploymentList,
+	hpaList *autov1.HorizontalPodAutoscalerList) {
+
+	fmt.Fprintf(os.Stdout, "-------------------\n")
+
+	if hpaList != nil {
+		fmt.Fprintf(os.Stdout, "===================\n")
+		for i, hpa := range hpaList.Items {
+			fmt.Fprintf(os.Stdout, "HPA  %d: %v\n", i, hpa.GetName())
+			fmt.Fprintf(os.Stdout, "      : %v\n", hpa.GetNamespace())
+			fmt.Fprintf(os.Stdout, "      : %v\n", hpa.GetUID())
+			fmt.Fprintf(os.Stdout, "      : %v\n", hpa.GetResourceVersion())
+			fmt.Fprintf(os.Stdout, "      : %v\n", hpa.GetLabels())
+			fmt.Fprintf(os.Stdout, "      : %v\n", hpa.GetCreationTimestamp())
+			fmt.Fprintf(os.Stdout, "      : %v\n", hpa.GetGenerateName())
+			fmt.Fprintf(os.Stdout, "      : %v\n", hpa.GetManagedFields())
+		}
+		fmt.Fprintf(os.Stdout, "===================\n")
+	}
+
+	fmt.Fprintf(os.Stdout, "-------------------\n")
+
+	if deployList != nil {
+		fmt.Fprintf(os.Stdout, "===================\n")
+		for i, deploy := range deployList.Items {
+			fmt.Fprintf(os.Stdout, "Deployment %d: %v\n", i, deploy.GetName())
+			fmt.Fprintf(os.Stdout, "            : %v\n", deploy.GetNamespace())
+			fmt.Fprintf(os.Stdout, "            : %v\n", deploy.GetUID())
+			fmt.Fprintf(os.Stdout, "            : %v\n", deploy.GetResourceVersion())
+			fmt.Fprintf(os.Stdout, "            : %v\n", deploy.GetLabels())
+			fmt.Fprintf(os.Stdout, "            : %v\n", deploy.GetCreationTimestamp())
+			fmt.Fprintf(os.Stdout, "            : %v\n", deploy.GetGenerateName())
+			fmt.Fprintf(os.Stdout, "            : %v\n", deploy.GetManagedFields())
+		}
+		fmt.Fprintf(os.Stdout, "===================\n")
+	}
 
 	fmt.Fprintf(os.Stdout, "-------------------\n")
 	for i, pod := range podList.Items {
 		fmt.Fprintf(os.Stdout, "pod %d: %v\n", i, pod.GetName())
 		fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetNamespace())
 		fmt.Fprintf(os.Stdout, "      : %v\n", pod.Status.Phase)
+		fmt.Fprintf(os.Stdout, "Parent: %v\n", podOwnerIs(clientset, &pod))
+		fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetUID())
+		fmt.Fprintf(os.Stdout, " owner: %v\n", pod.GetOwnerReferences())
+		fmt.Fprintf(os.Stdout, "      : %v\n", pod.Kind)
+		fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetGeneration())
 		fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetLabels())
 		fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetCreationTimestamp())
 		fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetAnnotations())
@@ -196,9 +244,7 @@ func debug(podList *corev1.PodList, pmList *v1beta1.PodMetricsList) {
 			fmt.Fprintf(os.Stdout, "               Limit    %v\n", c.Resources.Limits)
 		}
 
-		if i > 5 {
-			break
-		}
+		fmt.Fprintf(os.Stdout, "      : %v\n", pod)
 	}
 	fmt.Fprintf(os.Stdout, "-------------------\n")
 
@@ -207,6 +253,8 @@ func debug(podList *corev1.PodList, pmList *v1beta1.PodMetricsList) {
 		for i, pod := range pmList.Items {
 			fmt.Fprintf(os.Stdout, "pod %d: %v\n", i, pod.GetName())
 			fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetNamespace())
+			fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetUID())
+			fmt.Fprintf(os.Stdout, " owner: %v\n", pod.GetOwnerReferences())
 			fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetLabels())
 			fmt.Fprintf(os.Stdout, "      : %v\n", pod.GetCreationTimestamp())
 			fmt.Fprintf(os.Stdout, " cont : %v\n", len(pod.Containers))
@@ -214,11 +262,39 @@ func debug(podList *corev1.PodList, pmList *v1beta1.PodMetricsList) {
 			for i, c := range pod.Containers {
 				fmt.Fprintf(os.Stdout, "      %3d -> %v  ==> %v\n", i, c.Name, c.Usage)
 			}
-
-			if i > 5 {
-				break
-			}
 		}
 		fmt.Fprintf(os.Stdout, "===================\n")
 	}
+
+}
+
+func podOwnerIs(clientset kubernetes.Interface, pod *corev1.Pod) string {
+
+	if len(pod.OwnerReferences) == 0 {
+		return "<<has no owner>>"
+	}
+
+	var ownerName, ownerKind string
+
+	switch pod.OwnerReferences[0].Kind {
+	case "ReplicaSet":
+		fmt.Fprintf(os.Stdout, "get replica set for %s in %s\n", pod.OwnerReferences[0].Name, pod.Namespace)
+		replica, repErr := clientset.AppsV1().ReplicaSets(pod.Namespace).Get(context.TODO(), pod.OwnerReferences[0].Name, metav1.GetOptions{})
+		if repErr != nil {
+			fmt.Fprintf(os.Stderr, "Error getting Pod Replica Set: %v\n", repErr)
+			os.Exit(1)
+		}
+
+		ownerName = replica.OwnerReferences[0].Name
+		ownerKind = "Deployment"
+
+	case "DaemonSet", "StatefulSet":
+		ownerName = pod.OwnerReferences[0].Name
+		ownerKind = pod.OwnerReferences[0].Kind
+
+	default:
+		return fmt.Sprintf("unknown type [%s]", pod.OwnerReferences[0].Kind)
+	}
+
+	return fmt.Sprintf("%s -> [%s]", ownerKind, ownerName)
 }
