@@ -41,15 +41,23 @@ set positional-arguments
     just get $1 $2 $3
     echo "done with $1 $2 $3"
 
+@dolittle  *args='': 
+    just grab $1 $2 $3
+    just getlittle $1 $2 $3
+    echo "done with $1 $2 $3"
+
+@discover *args='':
+    kubeconjurer discover $@
+
 @grab *args='':
     kubeconjurer get $1 $2 $3
 
 @get *args='':
     mkdir -p ./$1/$2/$3
     # remove previous files
-    rm ./$1/$2/$3/util* ./$1/$2/$3/*.yaml ./$1/$2/$3/*.json || true
+    rm ./$1/$2/$3/util* ./$1/$2/$3/summary-* ./$1/$2/$3/*.yaml ./$1/$2/$3/*.json || true
     echo "All output files will be placed in ./$1/$2/$3"
-    export KUBECAP=/mnt/d/git/github.com/fnickels/kube-capacity/kube-capacity \
+    export KUBECAP=../kube-capacity \
         $( kubeconjurer get $1 $2 $3 )  \
         && echo "  VALUE=${KUBECAP}" \
         && echo "  Staring on CUSTOM kube-capacity summary runs" \
@@ -97,6 +105,28 @@ set positional-arguments
         && kubectl get nodes                   --all-namespaces -o yaml > ./$1/$2/$3/nodes.yaml \
         && kubectl get nodes                   --all-namespaces -o json > ./$1/$2/$3/nodes.json 
     echo "  Done."
+ 
+
+@getlittle *args='':
+    mkdir -p ./$1/$2/little/$3
+    # remove previous files
+    rm ./$1/$2/little/$3/util* ./$1/$2/little/$3/summary* ./$1/$2/little/$3/*.yaml ./$1/$2/little/$3/*.json || true
+    echo "All output files will be placed in ./$1/$2/little/$3"
+    export KUBECAP=../kube-capacity \
+        $( kubeconjurer get $1 $2 $3 )  \
+        && echo "  VALUE=${KUBECAP}" \
+        && echo "  Staring on CUSTOM kube-capacity summary runs" \
+        && ${KUBECAP} -o table --pod-summary --pod-count -u -b                   > ./$1/$2/little/$3/summary-util-bin.out \
+        && ${KUBECAP} -o table --pod-summary --pod-count -p -u -b                > ./$1/$2/little/$3/summary-pods.out  \
+        && echo "  Staring on CUSTOM kube-capacity runs" \
+        && ${KUBECAP}  --pod-count -o tsv \
+                        --util --group-by-node-labels=riot.io/security-perimeter,class --sort=cpu.request.percentage  \
+                               --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/little/$3/utilization-cpu-req.tsv \
+        && ${KUBECAP}  --pod-count \
+                        --util --group-by-node-labels=riot.io/security-perimeter,class --sort=cpu.request.percentage --pods \
+                               --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/little/$3/utilization-cpu-req-pods.txt \
+        && echo "  Done."
+    echo "  Really Done."
  
 
 
