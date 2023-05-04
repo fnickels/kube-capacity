@@ -2,12 +2,12 @@
 
 ## QUICK
 
-just dolittle rc3-val usw2 qa
 just dolittle rc3-val usw2 dev
 just dolittle rc3-val usw1 dev
 just dolittle rc3-val use1 dev
 just dolittle rc3-val euc1 dev
 just dolittle rc3-val atl1 dev
+just dolittle rc3-val dfw1 dev
 just dolittle rc3-val apse2 dev
 just dolittle rc3-val apse1 dev
 
@@ -25,6 +25,8 @@ just dolittle rc3-val-prod eun1 prod
 just dolittle rc3-val-prod euc1 prod
 just dolittle rc3-val-prod chi1 prod
 just dolittle rc3-val-prod atl1 prod
+just dolittle rc3-val-prod dfw1 prod
+just dolittle rc3-val-prod waw1 prod
 just dolittle rc3-val-prod apse2 prod
 just dolittle rc3-val-prod apse1 prod
 just dolittle rc3-val-prod aps1 prod
@@ -34,12 +36,12 @@ just dolittle rc3-val-prod ape1 prod
 
 ## FULL
 
-just do rc3-val usw2 qa
 just do rc3-val usw2 dev
 just do rc3-val usw1 dev
 just do rc3-val use1 dev
 just do rc3-val euc1 dev
 just do rc3-val atl1 dev
+just do rc3-val dfw1 dev
 just do rc3-val apse2 dev
 just do rc3-val apse1 dev
 
@@ -57,6 +59,8 @@ just do rc3-val-prod eun1 prod
 just do rc3-val-prod euc1 prod
 just do rc3-val-prod chi1 prod
 just do rc3-val-prod atl1 prod
+just do rc3-val-prod dfw1 prod
+just do rc3-val-prod waw1 prod
 just do rc3-val-prod apse2 prod
 just do rc3-val-prod apse1 prod
 just do rc3-val-prod aps1 prod

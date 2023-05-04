@@ -122,9 +122,9 @@ set positional-arguments
         && ${KUBECAP}  --pod-count -o tsv \
                         --util --group-by-node-labels=riot.io/security-perimeter,class --sort=cpu.request.percentage  \
                                --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/little/$3/utilization-cpu-req.tsv \
-        && ${KUBECAP}  --pod-count \
+        && ${KUBECAP}  --pod-count -o tsv \
                         --util --group-by-node-labels=riot.io/security-perimeter,class --sort=cpu.request.percentage --pods \
-                               --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/little/$3/utilization-cpu-req-pods.txt \
+                               --display-node-labels=node.kubernetes.io/instance-type                                          > ./$1/$2/little/$3/utilization-cpu-req-pods.tsv \
         && echo "  Done."
     echo "  Really Done."
  
